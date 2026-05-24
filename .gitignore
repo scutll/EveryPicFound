@@ -1,0 +1,36 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+data/
+everypicfound-backend/data/
+everypicfound-backend/logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+*.local
+application-local.yml
+
+# Maven wrapper should be kept
+!.mvn/wrapper/maven-wrapper.jar
+
+# unrelated file from docs
+docs/.obsidian
+docs/outdated

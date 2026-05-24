@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/everypicfound?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  mapper-locations: classpath:/mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+
+storage:
+  base-path: ./data/images
+  access-url-prefix: /images
+  max-file-size: 10485760 # 10MB
+  allowed-extensions:
+    - jpg
+    - jpeg
+    - png
+    - webp

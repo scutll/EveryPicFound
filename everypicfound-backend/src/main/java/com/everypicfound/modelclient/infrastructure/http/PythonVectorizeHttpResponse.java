@@ -30,5 +30,7 @@ public class PythonVectorizeHttpResponse {
 
     private String message;
 
+    private Long costMs;
+
 
 }

@@ -14,7 +14,7 @@ import java.io.InputStream;
 @NoArgsConstructor
 public class ImageVectorizeRequest {
     
-    private ImageInputType ImageInputType;
+    private ImageInputType imageInputType;
 
     private Long imageId;
 

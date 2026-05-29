@@ -25,6 +25,8 @@ public class VectorizeResult {
 
     private List<Float> embedding;
 
+    private String modelName;
+
     private Integer dim;
 
     private ErrorCode errorCode;

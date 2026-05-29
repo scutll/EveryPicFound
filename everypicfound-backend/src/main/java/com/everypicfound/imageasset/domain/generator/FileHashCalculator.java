@@ -1,9 +1,8 @@
 package com.everypicfound.imageasset.domain.generator;
 
-import com.everypicfound.imageasset.application.command.ImageUploadCommand;
+import java.io.InputStream;
 
 public interface FileHashCalculator {
-
-    // 计算文件内容 hash。
-    String calculateHash(ImageUploadCommand command);
+    
+    String calculateHash(InputStream inputStream);
 }

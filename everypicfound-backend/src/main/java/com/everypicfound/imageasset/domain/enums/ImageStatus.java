@@ -1,21 +1,18 @@
 package com.everypicfound.imageasset.domain.enums;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 @Getter
-@RequiredArgsConstructor
+@AllArgsConstructor
 public enum ImageStatus {
+    NORMAL(1, "normal picture asset"),
+                    
+    DELETED(2, "picture deleted"),
+                    
+    INVALID(3, "error picture asset");
 
-    // 正常图片资产。
-    NORMAL(1),
-
-    // 已删除图片资产。
-    DELETED(2),
-
-    // 异常图片资产。
-    INVALID(3);
-
-    // 状态码。
     private final Integer code;
+
+    private final String description;
 }

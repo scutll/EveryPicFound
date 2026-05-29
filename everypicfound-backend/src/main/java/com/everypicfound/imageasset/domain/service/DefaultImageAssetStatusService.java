@@ -1,24 +1,14 @@
 package com.everypicfound.imageasset.domain.service;
 
-import com.everypicfound.common.log.LogService;
-import com.everypicfound.imageasset.application.command.ImageStatusUpdateCommand;
-import com.everypicfound.imageasset.application.command.VectorStatusUpdateCommand;
-import com.everypicfound.imageasset.domain.enums.FailReason;
-import com.everypicfound.imageasset.domain.repository.ImageAssetRepository;
+import org.springframework.stereotype.Service;
 
+import com.everypicfound.imageasset.domain.enums.FailReason;
+
+
+
+@Service
 public class DefaultImageAssetStatusService implements ImageAssetStatusService {
 
-    // 图片资产仓储。
-    private ImageAssetRepository imageAssetRepository;
-
-    // 图片状态更新命令。
-    private ImageStatusUpdateCommand imageStatusUpdateCommand;
-
-    // 向量状态更新命令。
-    private VectorStatusUpdateCommand vectorStatusUpdateCommand;
-
-    // 记录状态变更日志。
-    private LogService logService;
 
     // 标记图片正常。
     @Override

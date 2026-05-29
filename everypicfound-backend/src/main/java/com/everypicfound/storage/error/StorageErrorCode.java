@@ -1,44 +1,26 @@
 package com.everypicfound.storage.error;
 
 import com.everypicfound.common.exception.ErrorCode;
-import lombok.RequiredArgsConstructor;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
-@RequiredArgsConstructor
+@Getter
+@AllArgsConstructor
 public enum StorageErrorCode implements ErrorCode {
 
-    // 文件保存失败。
-    FILE_SAVE_FAILED("STORAGE_001", "文件保存失败"),
+    FILE_SAVE_FAILED(300001, "file save failed"),
 
-    // 文件读取失败。
-    FILE_READ_FAILED("STORAGE_002", "文件读取失败"),
+    FILE_DELETE_FAILED(300002, "file delete failed"),
 
-    // 文件删除失败。
-    FILE_DELETE_FAILED("STORAGE_003", "文件删除失败"),
+    FILE_NOT_FOUND(300003, "file not found"),
 
-    // 文件不存在。
-    FILE_NOT_FOUND("STORAGE_004", "文件不存在"),
+    STORAGE_UNAVAILABLE(300004, "storage unavailable"),
 
-    // 存储不可用。
-    STORAGE_UNAVAILABLE("STORAGE_005", "存储不可用"),
+    STORAGE_PATH_INVALID(300005, "file sotrage path invalid"),
+                
+    FILE_READ_FAILED(300006, "file read failed");
 
-    // 存储路径非法。
-    STORAGE_PATH_INVALID("STORAGE_006", "存储路径非法");
+    private final Integer code;
 
-    // 错误码。
-    private final String code;
-
-    // 错误信息。
     private final String message;
-
-    // 获取错误码。
-    @Override
-    public String getCode() {
-        throw new UnsupportedOperationException("TODO");
-    }
-
-    // 获取错误信息。
-    @Override
-    public String getMessage() {
-        throw new UnsupportedOperationException("TODO");
-    }
 }

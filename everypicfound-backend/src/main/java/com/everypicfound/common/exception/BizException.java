@@ -4,10 +4,16 @@ import lombok.Getter;
 
 @Getter
 public class BizException extends RuntimeException {
+    
+    private final ErrorCode errorCode;
 
-    private ErrorCode errorCode;//额外的错误码字段
+    public BizException(ErrorCode errorCode) {
+        super(errorCode.getMessage());
+        this.errorCode = errorCode;
+    }
 
-    public ErrorCode getErrorCode() {
-        throw new UnsupportedOperationException("TODO");
+    public BizException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode.getMessage(), cause);
+        this.errorCode = errorCode;
     }
 }

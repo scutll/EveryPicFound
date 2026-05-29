@@ -1,4 +1,5 @@
 package com.everypicfound.common.cache;
+
 public interface CacheService {
 
     // 获取当前请求或任务上下文。

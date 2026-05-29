@@ -11,7 +11,7 @@ import java.util.List;
 public interface ImageAssetRepository {
 
     // 保存图片元数据。
-    void save(ImageAssetSaveCommand command);
+    boolean save(ImageAssetSaveCommand command);
 
     // 单个查询。
     ImageAssetDTO findById(Long imageId);

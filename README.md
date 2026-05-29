@@ -2,7 +2,7 @@
 后续编码任务请按此结构进行包创建
 ```bash
 E:.
-└───src.mainjava.com
+└───src.main.java.com
             └───everypicfound
                 ├───common
                 │   ├───cache
@@ -108,4 +108,30 @@ E:.
                     ├───error
                     └───infrastructure
                         └───publisher
+```
+
+## 启动方式
+
+### 向量化模型端启动
+
+环境配置
+```bash
+cd modelservice
+# 安装依赖
+pip install -r requirements.txt
+# 安装pytorch
+conda install pytorch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 pytorch-cuda=12.1 -c pytorch -c nvidia
+```
+
+启动
+```bash
+uvicorn --app-dir modelservice main:app --host 0.0.0.0 --port 8001 --workers 1
+```
+
+
+### 后端服务启动
+```bash
+cd everypicfound-bcakend
+mvn clean compile
+mvn spring-boot:run
 ```

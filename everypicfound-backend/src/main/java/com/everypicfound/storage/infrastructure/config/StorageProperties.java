@@ -1,14 +1,14 @@
 package com.everypicfound.storage.infrastructure.config;
 
 import java.util.List;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
 import lombok.Data;
-import lombok.NoArgsConstructor;
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+@Component
+@ConfigurationProperties(prefix = "everypicfound.storage")
 public class StorageProperties {
 
     // 本地文件存储根目录。

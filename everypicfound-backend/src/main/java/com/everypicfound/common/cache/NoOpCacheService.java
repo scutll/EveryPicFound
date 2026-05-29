@@ -1,4 +1,9 @@
 package com.everypicfound.common.cache;
+
+import org.springframework.stereotype.Component;
+
+
+@Component
 public class NoOpCacheService implements CacheService {
 
     @Override

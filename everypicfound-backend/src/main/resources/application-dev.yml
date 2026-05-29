@@ -10,13 +10,22 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
+everypicfound:
+  storage:
+    base-path: ./data/images
+    access-url-prefix: /images
+    max-file-size: 10485760 # 10MB
+    allowed-extensions:
+      - jpg
+      - jpeg
+      - png
+      - webp
 
-storage:
-  base-path: ./data/images
-  access-url-prefix: /images
-  max-file-size: 10485760 # 10MB
-  allowed-extensions:
-    - jpg
-    - jpeg
-    - png
-    - webp
+  model-client:
+    base-url: http://127.0.0.1:8001
+    image-vectorize-path: /vectorize/image
+    text-vectorize-path: /vectorize/text
+    health-path: /health
+    connect-timeout-ms: 3000
+    read-timeout-ms: 60000
+    default-model-name: clip

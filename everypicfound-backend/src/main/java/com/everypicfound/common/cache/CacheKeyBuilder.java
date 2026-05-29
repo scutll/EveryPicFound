@@ -1,8 +1,10 @@
 package com.everypicfound.common.cache;
+
+import org.springframework.stereotype.Service;
+
+@Service
 public class CacheKeyBuilder {
 
-    // 提供缓存统一接口，MVP 空实现，后续接 Redis。
-    private CacheService cacheService;
 
     // 统一生成搜索缓存 key。
     public String buildSearchKey(String rawKey) {

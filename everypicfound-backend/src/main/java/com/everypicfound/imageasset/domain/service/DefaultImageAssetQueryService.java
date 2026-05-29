@@ -5,21 +5,15 @@ import com.everypicfound.imageasset.application.command.BatchImageAssetQuery;
 import com.everypicfound.imageasset.application.command.ImageAssetQueryCriteria;
 import com.everypicfound.imageasset.application.dto.ImageAssetDTO;
 import com.everypicfound.imageasset.application.result.ImageAssetBatchQueryResult;
-import com.everypicfound.imageasset.domain.checker.ImageAssetStateChecker;
-import com.everypicfound.imageasset.domain.repository.ImageAssetRepository;
-import com.everypicfound.storage.api.FileStorageService;
 import java.util.List;
 
+import org.springframework.stereotype.Service;
+
+
+@Service
 public class DefaultImageAssetQueryService implements ImageAssetQueryService {
 
-    // 图片资产仓储。
-    private ImageAssetRepository imageAssetRepository;
 
-    // 图片状态判断器。
-    private ImageAssetStateChecker imageAssetStateChecker;
-
-    // 文件存储服务。
-    private FileStorageService fileStorageService;
 
     // 根据 imageId 查询图片。
     @Override

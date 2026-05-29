@@ -1,24 +1,20 @@
 package com.everypicfound.imageasset.domain.enums;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 @Getter
-@RequiredArgsConstructor
+@AllArgsConstructor
 public enum VectorStatus {
+    PENDING(1, "pending for vectorization"),
 
-    // 待向量化。
-    PENDING(1),
+    PROCESSING(2, "vectorizing"),
 
-    // 向量化处理中。
-    PROCESSING(2),
+    READY(3, "vector available"),
 
-    // 向量已可用。
-    READY(3),
+    FAILED(4, "vectorization failed");
 
-    // 向量化失败。
-    FAILED(4);
-
-    // 状态码。
     private final Integer code;
+
+    private final String description;
 }

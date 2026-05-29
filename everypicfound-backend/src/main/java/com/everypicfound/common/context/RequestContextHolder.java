@@ -1,21 +1,22 @@
 package com.everypicfound.common.context;
+
 public final class RequestContextHolder {
+    
+    private static final ThreadLocal<RequestContext> CONTEXT = new ThreadLocal<>();
 
     private RequestContextHolder() {
-    }
 
-    // 保存当前请求或任务上下文。
+    }
+    
     public static void set(RequestContext context) {
-        throw new UnsupportedOperationException("TODO");
+        CONTEXT.set(context);
     }
 
-    // 获取当前请求或任务上下文。
     public static RequestContext get() {
-        throw new UnsupportedOperationException("TODO");
+        return CONTEXT.get();
     }
 
-    // 清理当前请求或任务上下文。
     public static void clear() {
-        throw new UnsupportedOperationException("TODO");
+        CONTEXT.remove();
     }
 }

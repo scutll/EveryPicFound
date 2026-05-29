@@ -1,17 +1,16 @@
 package com.everypicfound.imageasset.interfaces.request;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 import org.springframework.web.multipart.MultipartFile;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ImageUploadRequest {
-
-    // 图片上传请求对象。
+    
     private MultipartFile imageFile;
+
 }

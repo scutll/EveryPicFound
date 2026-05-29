@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @SpringBootApplication
 @MapperScan("com.everypicfound.**.infrastructure.mapper")
+@ConfigurationPropertiesScan
 public class EverypicfoundBackendApplication {
 
 	public static void main(String[] args) {

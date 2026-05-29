@@ -1,62 +1,30 @@
 package com.everypicfound.imageasset.error;
 
 import com.everypicfound.common.exception.ErrorCode;
-import lombok.RequiredArgsConstructor;
 
-@RequiredArgsConstructor
-public enum ImageAssetErrorCode implements ErrorCode {
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
-    // 上传图片为空。
-    IMAGE_EMPTY("IMAGE_001", "上传图片为空"),
+@Getter
+@AllArgsConstructor
+public enum ImageAssetErrorCode implements ErrorCode{
+    IMAGE_EMPTY(200001, "image empty"),
 
-    // 图片大小超过限制。
-    IMAGE_SIZE_EXCEEDED("IMAGE_002", "图片大小超过限制"),
+    IMAGE_SIZE_EXCEEDED(200002, "image size excceeded limit"),
 
-    // 图片格式不支持。
-    IMAGE_FORMAT_UNSUPPORTED("IMAGE_003", "图片格式不支持"),
+    IMAGE_FORMAT_UNSUPPORTED(200003, "image format unsupported"),
 
-    // MIME 类型不合法。
-    IMAGE_MIME_INVALID("IMAGE_004", "MIME 类型不合法"),
+    IMAGE_MIME_INVALID(200004, "image mime type invalid"),
 
-    // 图片无法解析。
-    IMAGE_DECODE_FAILED("IMAGE_005", "图片无法解析"),
+    IMAGE_DECODE_FAILED(200005, "failed to decode image"),
 
-    // 图片已存在。
-    DUPLICATE_IMAGE("IMAGE_006", "图片已存在"),
+    DUPLICATE_IMAGE(200006, "image exists already"),
 
-    // 图片不存在。
-    IMAGE_NOT_FOUND("IMAGE_007", "图片不存在"),
+    IMAGE_METADATA_SAVE_FAILED(200007, "image metadata saving failed"),
 
-    // 图片状态不允许当前操作。
-    IMAGE_STATUS_INVALID("IMAGE_008", "图片状态不允许当前操作"),
+    ORPHAN_FILE_DELETE_FAILED(200008, "orphan image deleting failed");
 
-    // 图片元数据入库失败。
-    IMAGE_METADATA_SAVE_FAILED("IMAGE_009", "图片元数据入库失败"),
+    private final Integer code;
 
-    // 图片状态更新失败。
-    IMAGE_STATUS_UPDATE_FAILED("IMAGE_010", "图片状态更新失败"),
-
-    // 向量状态更新失败。
-    VECTOR_STATUS_UPDATE_FAILED("IMAGE_011", "向量状态更新失败"),
-
-    // 孤儿文件补偿删除失败。
-    ORPHAN_FILE_DELETE_FAILED("IMAGE_012", "孤儿文件补偿删除失败");
-
-    // 错误码。
-    private final String code;
-
-    // 错误信息。
     private final String message;
-
-    // 获取错误码。
-    @Override
-    public String getCode() {
-        throw new UnsupportedOperationException("TODO");
-    }
-
-    // 获取错误信息。
-    @Override
-    public String getMessage() {
-        throw new UnsupportedOperationException("TODO");
-    }
 }

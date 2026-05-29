@@ -20,3 +20,12 @@ everypicfound:
       - jpeg
       - png
       - webp
+
+  model-client:
+    base-url: http://127.0.0.1:8001
+    image-vectorize-path: /vectorize/image
+    text-vectorize-path: /vectorize/text
+    health-path: /health
+    connect-timeout-ms: 3000
+    read-timeout-ms: 60000
+    default-model-name: clip

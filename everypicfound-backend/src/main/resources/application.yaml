@@ -3,6 +3,10 @@ spring:
     name: everypicfound-backend
   profiles:
     active: dev
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
 
 server:
   port: 8080

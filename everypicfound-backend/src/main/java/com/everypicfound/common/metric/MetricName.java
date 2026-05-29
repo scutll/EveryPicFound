@@ -35,5 +35,8 @@ public enum MetricName {
     FILE_DELETE_DURATION_MS,
 
     // 文件删除失败次数指标。
-    FILE_DELETE_FAILED_COUNT
+    FILE_DELETE_FAILED_COUNT,
+
+    //上传耗时指标
+    UPLOAD_COST_MS
 }

@@ -1,0 +1,12 @@
+# python
+__pycache__/
+
+# logs 
+logs/
+
+
+# dev test program
+test.py
+
+# models
+models/

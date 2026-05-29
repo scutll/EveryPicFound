@@ -1,0 +1,8 @@
+# requirements.txt
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+pillow
+open_clip_torch
+safetensors

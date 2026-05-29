@@ -1,5 +1,9 @@
 package com.everypicfound.imageasset.application.service;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.util.Map;
+
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
@@ -42,10 +46,6 @@ import com.everypicfound.vectorization.api.VectorizationPublishResult;
 import com.everypicfound.vectorization.api.VectorizationTaskPublisher;
 
 import lombok.RequiredArgsConstructor;
-
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -217,14 +217,16 @@ public class DefaultImageAssetApplicationService implements ImageAssetApplicatio
 
         try {
             boolean saved = imageAssetRepository.save(saveCommand);
+
             if (!saved) {
-                handleMetadataSaveFailed(storedFile, fileHash);
+                handleMetadataSaveFailed(storedFile, fileHash, imageId, command);
             }
+
         } catch (DuplicateKeyException exception) {
-            compensateSavedFile(storedFile, fileHash);
+            compensateSavedFile(storedFile, fileHash, imageId, command);
             throw new BizException(ImageAssetErrorCode.DUPLICATE_IMAGE);
         } catch (RuntimeException exception) {
-            compensateSavedFile(storedFile, fileHash);
+            compensateSavedFile(storedFile, fileHash, imageId, command);
             throw new SystemException(ImageAssetErrorCode.IMAGE_METADATA_SAVE_FAILED, exception);
         }
 
@@ -238,12 +240,20 @@ public class DefaultImageAssetApplicationService implements ImageAssetApplicatio
         return generatedFileName;
     }
 
-    private void handleMetadataSaveFailed(StoredFile storedFile, String fileHash) {
-        compensateSavedFile(storedFile, fileHash);
+    private void handleMetadataSaveFailed(
+            StoredFile storedFile,
+            String fileHash,
+            Long imageId,
+            ImageUploadCommand command) {
+        compensateSavedFile(storedFile, fileHash, imageId, command);
         throw new SystemException(ImageAssetErrorCode.IMAGE_METADATA_SAVE_FAILED);
     }
 
-    private void compensateSavedFile(StoredFile storedFile, String fileHash) {
+    private void compensateSavedFile(
+            StoredFile storedFile,
+            String fileHash,
+            Long imageId,
+            ImageUploadCommand command) {
         boolean deleted = false;
 
         try {
@@ -255,11 +265,15 @@ public class DefaultImageAssetApplicationService implements ImageAssetApplicatio
         if (!deleted) {
             orphanFileLogService.recordOrphanFile(
                     OrphanFileRecord.builder()
+                            .imageId(imageId)
                             .storagePath(storedFile.getStoragePath())
+                            .accessUrl(storedFile.getAccessUrl())
+                            .fileName(storedFile.getFileName())
+                            .originalFileName(command == null ? null : command.getOriginalFileName())
                             .fileHash(fileHash)
                             .failReason(ImageAssetErrorCode.IMAGE_METADATA_SAVE_FAILED.getMessage())
                             .retryCount(0)
-                            .CleanStatus(CleanStatus.WAITING)
+                            .cleanStatus(CleanStatus.WAITING)
                             .build());
         }
     }

@@ -2,7 +2,7 @@ package com.everypicfound.common.metric;
 
 public interface MetricRecorder {
     
-    void increment(MetricName MetriceName, MetricTags tags);
+    void increment(MetricName metricName, MetricTags tags);
 
     void recordTimer(MetricName metricName, Long costMs, MetricTags tags);
 

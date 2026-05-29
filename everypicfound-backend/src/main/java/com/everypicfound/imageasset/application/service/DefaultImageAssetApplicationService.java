@@ -109,6 +109,9 @@ public class DefaultImageAssetApplicationService implements ImageAssetApplicatio
         /*
          * 验证图片文件和生成id、文件名
          */
+
+        //inputStream只能读取一次
+        //先把inputStream的内容存入字节数组，后续需要的时候转成放入字节流
         byte[] fileBytes = readFileBytes(command);
 
         ImageUploadCommand normalizedCommand = rebuildCommand(command, fileBytes);

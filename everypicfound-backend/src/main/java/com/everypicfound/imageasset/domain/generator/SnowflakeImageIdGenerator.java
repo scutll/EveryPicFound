@@ -29,7 +29,7 @@ public class SnowflakeImageIdGenerator implements ImageIdGenerator {
     //偏移
     private static final long WORKER_ID_SHIFT = SEQUENCE_BITS;
 
-    private static final long TIMESTAMP_SHIFT = SEQUENCE_BITS + WORKER_ID_SHIFT;
+    private static final long TIMESTAMP_SHIFT = WORKER_ID_BITS + WORKER_ID_SHIFT;
 
     private static final long WORKER_ID = 1L; //单机环境下先固定
 
@@ -40,7 +40,7 @@ public class SnowflakeImageIdGenerator implements ImageIdGenerator {
     //这里用的是一个long 64位来存放，所以需要通过移位操作来控制WORKER_ID和SEQUENCE的实际有效值都在对应位上
 
     @Override
-    public Long nextId() {
+    public synchronized Long nextId() {
         long currentTimeStamp = currentTimeMillis();
 
         if (currentTimeStamp < lastTimeStamp) {

@@ -11,5 +11,8 @@ public enum MetricName {
     UPLOAD_TOTAL_COUNT,
 
     // 向量化耗时指标。
-    VECTORIZATION_COST_MS
+    VECTORIZATION_COST_MS,
+
+    //上传耗时指标
+    UPLOAD_COST_MS
 }

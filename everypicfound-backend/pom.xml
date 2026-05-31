@@ -69,6 +69,12 @@
 			<artifactId>mybatis-plus-spring-boot3-starter</artifactId>
 			<version>3.5.12</version>
 		</dependency>
+		<dependency>
+			<groupId>io.qdrant</groupId>
+			<artifactId>client</artifactId>
+			<version>1.18.1</version>
+		</dependency>
+
 	</dependencies>
 
 	<build>

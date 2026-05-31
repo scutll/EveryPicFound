@@ -25,3 +25,18 @@ everypicfound:
       - jpeg
       - png
       - webp
+
+  vector-index:
+    active-collection-name: CLIP_v1
+    collections:
+      CLIP_v1:
+        collection-name: CLIP_v1
+        model-name: clip-ViT-32B
+        vector-dim: 512
+        vector-version: v1
+        distance-metric: COSINE
+    qdrant:
+      host: 127.0.0.1
+      port: 6334
+      use-tls: false
+      timeout-ms: 10000

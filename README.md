@@ -129,6 +129,35 @@ uvicorn --app-dir modelservice main:app --host 0.0.0.0 --port 8001 --workers 1
 ```
 
 
+### qdrant向量库启动
+1. 确认 docker-compose.yml 存在:
+```yaml
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: everypicfound-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+```
+
+2. 启动qdrant
+```bash
+cd everypicfound-bcakend
+docker compose up -d
+
+# 此时使用 docker ps 能看到容器
+# 运行结束以后 docker compose down 关闭容器
+```
+
 ### 后端服务启动
 ```bash
 cd everypicfound-bcakend

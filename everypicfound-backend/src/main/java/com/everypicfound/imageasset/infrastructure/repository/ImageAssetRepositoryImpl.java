@@ -184,7 +184,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
 
     @Override
     public boolean updateVectorReady(VectorStatusUpdateCommand command) {
-        if (command != null) {
+        if (command == null) {
             return false;
         }
 

@@ -36,4 +36,7 @@ public interface ImageAssetRepository {
 
     // 标记向量 FAILED。
     boolean updateVectorFailed(VectorStatusUpdateCommand command);
+
+    //原子自增retry_count
+    boolean increaseRetryCount(Long imageId);
 }

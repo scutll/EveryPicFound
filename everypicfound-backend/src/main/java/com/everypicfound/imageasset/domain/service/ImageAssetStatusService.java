@@ -29,5 +29,5 @@ public interface ImageAssetStatusService {
     void increaseRetryCount(Long imageId);
 
     // 处理卡死任务。
-    void resetProcessingToPending(Long imageId);
+    void resetProcessingTimeoutToPending(Long imageId);
 }

@@ -1,5 +1,6 @@
 package com.everypicfound.imageasset.application.dto;
 
+import com.everypicfound.imageasset.domain.enums.FailReason;
 import com.everypicfound.imageasset.domain.enums.ImageStatus;
 import com.everypicfound.imageasset.domain.enums.VectorStatus;
 import java.time.LocalDateTime;
@@ -61,4 +62,15 @@ public class ImageAssetDTO {
 
     // 更新时间。
     private LocalDateTime updatedTime;
+
+    private LocalDateTime VectorUpdatedTime;
+
+    private LocalDateTime processingStartedTime;
+
+    private Integer retryCount;
+
+    private FailReason failReason;
+
+    private Integer version;
+
 }

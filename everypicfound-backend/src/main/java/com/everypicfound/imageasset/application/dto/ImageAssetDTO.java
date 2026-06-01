@@ -63,7 +63,7 @@ public class ImageAssetDTO {
     // 更新时间。
     private LocalDateTime updatedTime;
 
-    private LocalDateTime VectorUpdatedTime;
+    private LocalDateTime vectorUpdatedTime;
 
     private LocalDateTime processingStartedTime;
 

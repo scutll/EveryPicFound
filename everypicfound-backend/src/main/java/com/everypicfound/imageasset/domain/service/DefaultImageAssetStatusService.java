@@ -37,7 +37,7 @@ public class DefaultImageAssetStatusService implements ImageAssetStatusService {
     // 标记图片异常。
     @Override
     public void markInvalid(Long imageId, FailReason failReason) {
-        updateImageStatus(imageId, ImageStatus.INVALID, null);
+        updateImageStatus(imageId, ImageStatus.INVALID, failReason);
     }
 
     // 标记待向量化。

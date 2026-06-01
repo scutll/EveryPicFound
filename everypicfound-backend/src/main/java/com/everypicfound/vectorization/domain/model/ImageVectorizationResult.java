@@ -23,7 +23,7 @@ public class ImageVectorizationResult {
 
     private Boolean skipped;
 
-    private VectorStatus VectorStatus;
+    private VectorStatus vectorStatus;
 
     private FailReason failReason;
 

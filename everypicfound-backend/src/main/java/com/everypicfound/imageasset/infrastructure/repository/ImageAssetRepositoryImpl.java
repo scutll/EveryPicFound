@@ -94,11 +94,11 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
                 wrapper.eq(ImageAssetPO::getVectorStatus, criteria.getVectorStatus().getCode());
             }
             if (criteria.getCreatedStartTime() != null) {
-                wrapper.eq(ImageAssetPO::getCreatedTime, criteria.getCreatedStartTime());
+                wrapper.ge(ImageAssetPO::getCreatedTime, criteria.getCreatedStartTime());
             }
 
             if (criteria.getCreatedEndTime() != null) {
-                wrapper.eq(ImageAssetPO::getCreatedTime, criteria.getCreatedEndTime());
+                wrapper.le(ImageAssetPO::getCreatedTime, criteria.getCreatedEndTime());
             }
         }
 
@@ -274,7 +274,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
                 .vectorStatus(toVectorStatus(po.getVectorStatus()))
                 .createdTime(po.getCreatedTime())
                 .updatedTime(po.getUpdatedTime())
-                .VectorUpdatedTime(po.getVectorUpdatedTime())
+                .vectorUpdatedTime(po.getVectorUpdatedTime())
                 .processingStartedTime(po.getProcessingStartedTime())
                 .retryCount(po.getRetryCount())
                 .failReason(toFailReason(po.getFailReason()))

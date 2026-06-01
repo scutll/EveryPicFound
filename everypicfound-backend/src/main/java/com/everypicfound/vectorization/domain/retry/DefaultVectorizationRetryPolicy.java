@@ -55,7 +55,7 @@ public class DefaultVectorizationRetryPolicy implements VectorizationRetryPolicy
         }
 
         int currentRetryCount = retryCount == null ? 0 : retryCount;
-        int allowedRetryCount = maxRetryCount == null ? 0 : retryCount;
+        int allowedRetryCount = maxRetryCount == null ? 0 : maxRetryCount;
 
 
         return currentRetryCount < allowedRetryCount;

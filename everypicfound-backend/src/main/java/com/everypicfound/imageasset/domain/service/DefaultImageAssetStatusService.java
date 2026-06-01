@@ -4,12 +4,14 @@ import java.time.LocalDateTime;
 
 import org.springframework.stereotype.Service;
 
+import com.everypicfound.common.exception.BizException;
 import com.everypicfound.imageasset.application.command.ImageStatusUpdateCommand;
 import com.everypicfound.imageasset.application.command.VectorStatusUpdateCommand;
 import com.everypicfound.imageasset.domain.enums.FailReason;
 import com.everypicfound.imageasset.domain.enums.ImageStatus;
 import com.everypicfound.imageasset.domain.enums.VectorStatus;
 import com.everypicfound.imageasset.domain.repository.ImageAssetRepository;
+import com.everypicfound.vectorization.error.VectorizationErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
@@ -68,7 +70,10 @@ public class DefaultImageAssetStatusService implements ImageAssetStatusService {
                 .imageId(imageId)
                 .build();
 
-        imageAssetRepository.updateVectorReady(command);
+        boolean updated = imageAssetRepository.updateVectorReady(command);
+        if (!updated) {
+            throw new BizException(VectorizationErrorCode.VECTOR_READY_UPDATE_FAILED);
+        }
     }
 
     // 标记向量失败，并写入 fail_reason。

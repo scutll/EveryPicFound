@@ -263,6 +263,10 @@ public class DefaultImageVectorizationProcessor implements ImageVectorizationPro
             return FailReason.FILE_NOT_FOUND;
         }
 
+        if (VectorizationErrorCode.VECTOR_READY_UPDATE_FAILED.equals(e.getErrorCode())) {
+            return FailReason.READY_UPDATE_FAILED;
+        }
+
         return FailReason.MODEL_SERVICE_ERROR;
     }
 

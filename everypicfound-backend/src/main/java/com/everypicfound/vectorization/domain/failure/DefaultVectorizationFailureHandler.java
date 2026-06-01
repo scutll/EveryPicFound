@@ -21,16 +21,17 @@ public class DefaultVectorizationFailureHandler implements VectorizationFailureH
     @Override
     public ImageVectorizationResult handleFileMissing(VectorizationFailureContext context) {
         Long imageId = getImageId(context);
-        FailReason failReason = getFailReason(context);
 
-        imageAssetStatusService.increaseRetryCount(imageId);
-        imageAssetStatusService.markVectorPending(imageId);
+
+        imageAssetStatusService.markInvalid(imageId, FailReason.FILE_NOT_FOUND);
+        imageAssetStatusService.markVectorFailed(imageId, FailReason.FILE_NOT_FOUND);
 
         return ImageVectorizationResult.builder()
                 .imageId(imageId)
                 .success(false)
-                .vectorStatus(VectorStatus.PENDING)
-                .failReason(failReason)
+                .skipped(false)
+                .vectorStatus(VectorStatus.FAILED)
+                .failReason(FailReason.FILE_NOT_FOUND)
                 .message(context.getErrorMessage())
                 .build();
 

@@ -34,4 +34,6 @@ public class VectorStatusUpdateCommand {
 
     // 乐观锁版本号。
     private Integer version;
+
+    private Boolean clearFailReason;
 }

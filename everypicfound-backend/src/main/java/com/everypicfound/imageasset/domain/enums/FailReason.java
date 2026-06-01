@@ -24,5 +24,8 @@ public enum FailReason {
     READY_UPDATE_FAILED,
 
     // 超过最大重试次数。
-    RETRY_LIMIT_EXCEEDED
+    RETRY_LIMIT_EXCEEDED,
+
+    // 向量化超时
+    PROCESSING_TIMEOUT
 }

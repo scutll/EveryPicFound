@@ -16,6 +16,7 @@ import com.everypicfound.imageasset.application.command.ImageAssetSaveCommand;
 import com.everypicfound.imageasset.application.command.ImageStatusUpdateCommand;
 import com.everypicfound.imageasset.application.command.VectorStatusUpdateCommand;
 import com.everypicfound.imageasset.application.dto.ImageAssetDTO;
+import com.everypicfound.imageasset.domain.enums.FailReason;
 import com.everypicfound.imageasset.domain.enums.ImageStatus;
 import com.everypicfound.imageasset.domain.enums.VectorStatus;
 import com.everypicfound.imageasset.domain.repository.ImageAssetRepository;
@@ -93,11 +94,11 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
                 wrapper.eq(ImageAssetPO::getVectorStatus, criteria.getVectorStatus().getCode());
             }
             if (criteria.getCreatedStartTime() != null) {
-                wrapper.eq(ImageAssetPO::getCreatedTime, criteria.getCreatedStartTime());
+                wrapper.ge(ImageAssetPO::getCreatedTime, criteria.getCreatedStartTime());
             }
 
             if (criteria.getCreatedEndTime() != null) {
-                wrapper.eq(ImageAssetPO::getCreatedTime, criteria.getCreatedEndTime());
+                wrapper.le(ImageAssetPO::getCreatedTime, criteria.getCreatedEndTime());
             }
         }
 
@@ -173,8 +174,11 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
             wrapper.set(ImageAssetPO::getRetryCount, command.getRetryCount());
         }
 
-        if (command.getFailReason() != null) {
-            wrapper.set(ImageAssetPO::getFailReason, command.getFailReason());
+        //updateReady的时候FailReason为null，直接以!=null判断就没法更新数据库
+        if (Boolean.TRUE.equals(command.getClearFailReason())) {
+            wrapper.set(ImageAssetPO::getFailReason, null);
+        }else if (command.getFailReason() != null) {
+            wrapper.set(ImageAssetPO::getFailReason, command.getFailReason().name());
         }
 
         return imageAssetMapper.update(null, wrapper) > 0;
@@ -191,6 +195,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
         command.setTargetStatus(VectorStatus.READY);
         command.setVectorUpdatedTime(LocalDateTime.now());
         command.setFailReason(null);
+        command.setClearFailReason(true);
 
         return updateVectorStatus(command);
     }
@@ -205,6 +210,24 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
 
         return updateVectorStatus(command);
     }
+
+
+    //累加型字段retry_count使用原子自增，防止并发丢失更新
+    @Override
+    public boolean increaseRetryCount(Long imageId) {
+        if (imageId == null) {
+            return false;
+        }
+
+        LambdaUpdateWrapper<ImageAssetPO> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(ImageAssetPO::getId, imageId)
+                .setSql("retry_count = COALESCE(retry_count, 0) + 1")
+                .setSql("version = version + 1")
+                .set(ImageAssetPO::getUpdatedTime, LocalDateTime.now());
+
+        return imageAssetMapper.update(null, wrapper) > 0;
+    }
+
 
     private ImageAssetPO toPO(ImageAssetSaveCommand command) {
         LocalDateTime now = LocalDateTime.now();
@@ -251,7 +274,20 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
                 .vectorStatus(toVectorStatus(po.getVectorStatus()))
                 .createdTime(po.getCreatedTime())
                 .updatedTime(po.getUpdatedTime())
+                .vectorUpdatedTime(po.getVectorUpdatedTime())
+                .processingStartedTime(po.getProcessingStartedTime())
+                .retryCount(po.getRetryCount())
+                .failReason(toFailReason(po.getFailReason()))
+                .version(po.getVersion())
                 .build();
+    }
+
+    private FailReason toFailReason(String failReason) {
+        if (failReason == null || failReason.isBlank()) {
+            return null;
+        }
+
+        return FailReason.valueOf(failReason);
     }
 
     private ImageStatus toImageStatus(Integer code) {
@@ -298,5 +334,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
 
         return Math.min(pageSize, 100);
     }
+
+
 
 }

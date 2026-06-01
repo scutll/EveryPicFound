@@ -40,3 +40,10 @@ everypicfound:
       port: 6334
       use-tls: false
       timeout-ms: 10000
+      
+  vectorization:
+    max-retry-count: 3
+    processing-timeout-seconds: 300
+    publish-mode: THREAD_POOL
+    scanner-enabled: false
+    pending-scan-batch-size: 100

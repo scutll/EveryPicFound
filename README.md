@@ -129,33 +129,33 @@ uvicorn --app-dir modelservice main:app --host 0.0.0.0 --port 8001 --workers 1
 ```
 
 
-### qdrant向量库启动
-1. 确认 docker-compose.yml 存在:
-```yaml
-version: '3.8'
+### qdrant向量库/mysql启动
+- qdrant / mysql均运行在docker容器中，通过docker-compose.yml一起启动
+1. 确认 docker-compose.yml 存在
 
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: everypicfound-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    restart: unless-stopped
-
-volumes:
-  qdrant_data:
-```
-
-2. 启动qdrant
+2. 启docker
 ```bash
-cd everypicfound-bcakend
+cd everypicfound-backend
 docker compose up -d
 
 # 此时使用 docker ps 能看到容器
 # 运行结束以后 docker compose down 关闭容器
+```
+
+- 第一次启动创建数据库(docker里面未创建数据库时才用)
+```bash
+cmd /c "docker exec -i everypicfound-mysql mysql -uroot -proot everypicfound < src\main\resources\db\migration\init_imageasset.sql"
+
+#验证
+docker exec -it everypicfound-mysql mysql -uroot -proot everypicfound
+SHOW TABLES;
+DESC image_asset;
+```
+
+
+- 进入数据库
+```bash
+docker exec -it everypicfound-mysql mysql -uroot -proot everypicfound
 ```
 
 ### 后端服务启动

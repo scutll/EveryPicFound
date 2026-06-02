@@ -7,13 +7,19 @@ spring:
     multipart:
       max-file-size: 20MB
       max-request-size: 25MB
+  datasource:
+    url: jdbc:mysql://localhost:3307/everypicfound?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  mapper-locations: classpath:/mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
 
 server:
   port: 8080
-
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
 
 everypicfound:
   storage:
@@ -47,3 +53,9 @@ everypicfound:
     publish-mode: THREAD_POOL
     scanner-enabled: false
     pending-scan-batch-size: 100
+
+  system-health:
+    scheduled-enabled: true
+    check-interval-ms: 60000
+    initial-delay-ms: 30000
+    startup-fail-fast: true

@@ -53,3 +53,9 @@ everypicfound:
     publish-mode: THREAD_POOL
     scanner-enabled: false
     pending-scan-batch-size: 100
+
+  system-health:
+    scheduled-enabled: true
+    check-interval-ms: 60000
+    initial-delay-ms: 30000
+    startup-fail-fast: true

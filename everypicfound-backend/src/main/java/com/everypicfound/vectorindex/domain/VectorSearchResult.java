@@ -14,6 +14,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class VectorSearchResult {
+
+    private Boolean success;
     
     private List<VectorSearchItem> items;
 

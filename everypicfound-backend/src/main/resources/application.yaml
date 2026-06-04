@@ -59,3 +59,12 @@ everypicfound:
     check-interval-ms: 60000
     initial-delay-ms: 30000
     startup-fail-fast: true
+
+  search:
+    default-top-k: 30
+    max-top-k: 50
+    over-fetch-ratio: 3
+    max-top-n: 200
+    rerank-enabled: false
+    cache-enabled: false
+    max-query-text-length: 500

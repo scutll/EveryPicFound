@@ -1,0 +1,43 @@
+package com.everypicfound.search.domain.validator;
+
+import com.everypicfound.search.application.command.SearchCommand;
+import com.everypicfound.search.config.SearchProperties;
+import com.everypicfound.search.domain.enums.SearchType;
+import com.everypicfound.search.error.SearchErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+@Component
+@RequiredArgsConstructor
+public class ImageSearchRequestValidator implements SearchRequestValidator {
+
+    private final SearchProperties searchProperties;
+
+    @Override
+    public SearchType supportType() {
+        return SearchType.IMAGE;
+    }
+
+    @Override
+    public SearchValidateResult validate(SearchCommand command) {
+        if (command == null || command.getSearchType() != SearchType.IMAGE) {
+            return SearchValidateResult.fail(SearchErrorCode.SEARCH_TYPE_INVALID);
+        }
+
+        if (isInvalidTopK(command.getTopK())) {
+            return SearchValidateResult.fail(SearchErrorCode.SEARCH_TOPK_INVALID);
+        }
+
+        if (command.getQueryImage() == null
+                || command.getQueryImageFileSize() == null
+                || command.getQueryImageFileSize() <= 0) {
+            return SearchValidateResult.fail(SearchErrorCode.SEARCH_IMAGE_EMPTY);
+        }
+
+        return SearchValidateResult.success();
+    }
+
+    private boolean isInvalidTopK(Integer topK) {
+        return topK == null || topK <= 0 || topK > searchProperties.getMaxTopK();
+    }
+}

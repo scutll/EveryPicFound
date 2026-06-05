@@ -29,6 +29,8 @@ public class SearchCommand {
     //文字部分
     private String queryText;
 
+    private Integer topK;
+
     private String traceId;
 
     private String requestId;

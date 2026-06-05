@@ -54,11 +54,16 @@ everypicfound:
     scanner-enabled: false
     pending-scan-batch-size: 100
 
+    hybrid-fusion:
+      image-weight: 0.5
+      text-weight: 0.5
+      normalize-enabled: true
+
   system-health:
     scheduled-enabled: true
     check-interval-ms: 60000
     initial-delay-ms: 30000
-    startup-fail-fast: true
+    startup-fail-fast: false
 
   search:
     default-top-k: 30

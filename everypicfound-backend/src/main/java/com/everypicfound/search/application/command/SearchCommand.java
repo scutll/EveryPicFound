@@ -33,4 +33,6 @@ public class SearchCommand {
 
     private String requestId;
 
+    private Integer topK;
+
 }

@@ -1,4 +1,4 @@
-package com.everypicfound.vectorization.domain.query;
+package com.everypicfound.vectorization.domain.fusion;
 
 import java.util.List;
 

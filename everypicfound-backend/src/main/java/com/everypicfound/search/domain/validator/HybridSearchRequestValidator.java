@@ -1,17 +1,19 @@
 package com.everypicfound.search.domain.validator;
 
+import org.springframework.stereotype.Component;
+
 import com.everypicfound.search.application.command.SearchCommand;
 import com.everypicfound.search.config.SearchProperties;
 import com.everypicfound.search.domain.enums.SearchType;
 import com.everypicfound.search.error.SearchErrorCode;
+
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
 public class HybridSearchRequestValidator implements SearchRequestValidator {
 
-    private final SearchProperties searchProperties;
+    private final SearchProperties searchProperties; 
 
     @Override
     public SearchType supportType() {

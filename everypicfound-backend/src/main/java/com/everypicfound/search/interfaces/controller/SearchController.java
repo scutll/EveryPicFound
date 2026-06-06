@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.everypicfound.common.context.RequestContext;
 import com.everypicfound.common.context.RequestContextHolder;
@@ -65,13 +66,14 @@ public class SearchController {
     构建SearchCommand对象，将接收到的ImageSearchRequest对象中的参数赋给SearchCommand对象，并返回该对象。
      */
     private SearchCommand buildImageSearchCommand(ImageSearchRequest request) throws IOException {
+        MultipartFile queryImage = request == null ? null : request.getQueryImage();
         return SearchCommand.builder()
                 .searchType(SearchType.IMAGE)
-                .queryImage(request.getQueryImage().getInputStream())
-                .queryImageOriginalFileName(request.getQueryImage().getOriginalFilename())
-                .queryImageFileSize(request.getQueryImage().getSize())
-                .queryImageMimeType(request.getQueryImage().getContentType())
-                .topK(request.getTopK())
+                .queryImage(isEmptyFile(queryImage) ? null : queryImage.getInputStream())
+                .queryImageOriginalFileName(queryImage == null ? null : queryImage.getOriginalFilename())
+                .queryImageFileSize(queryImage == null ? null : queryImage.getSize())
+                .queryImageMimeType(queryImage == null ? null : queryImage.getContentType())
+                .topK(request == null ? null : request.getTopK())
                 .traceId(getTraceId())
                 .requestId(getRequestId())
                 .build();
@@ -81,8 +83,8 @@ public class SearchController {
     private SearchCommand buildTextSearchCommand(TextSearchRequest request) {
         return SearchCommand.builder()
                 .searchType(SearchType.TEXT)
-                .queryText(request.getQueryText())
-                .topK(request.getTopK())
+                .queryText(request == null ? null : request.getQueryText())
+                .topK(request == null ? null : request.getTopK())
                 .traceId(getTraceId())
                 .requestId(getRequestId())
                 .build();
@@ -90,17 +92,22 @@ public class SearchController {
 
     //构建SearchCommand对象，将接收到的HybridSearchRequest对象中的参数赋给SearchCommand对象，并返回该对象。
     private SearchCommand buildHybridSearchCommand(HybridSearchRequest request) throws IOException {
+        MultipartFile queryImage = request == null ? null : request.getQueryImage();
         return SearchCommand.builder()
                 .searchType(SearchType.HYBRID)
-                .queryImage(request.getQueryImage().getInputStream())
-                .queryImageOriginalFileName(request.getQueryImage().getOriginalFilename())
-                .queryImageFileSize(request.getQueryImage().getSize())
-                .queryImageMimeType(request.getQueryImage().getContentType())
-                .queryText(request.getQueryText())
-                .topK(request.getTopK())
+                .queryImage(isEmptyFile(queryImage) ? null : queryImage.getInputStream())
+                .queryImageOriginalFileName(queryImage == null ? null : queryImage.getOriginalFilename())
+                .queryImageFileSize(queryImage == null ? null : queryImage.getSize())
+                .queryImageMimeType(queryImage == null ? null : queryImage.getContentType())
+                .queryText(request == null ? null : request.getQueryText())
+                .topK(request == null ? null : request.getTopK())
                 .traceId(getTraceId())
                 .requestId(getRequestId())
                 .build();
+    }
+
+    private boolean isEmptyFile(MultipartFile file) {
+        return file == null || file.isEmpty() || file.getSize() <= 0;
     }
 
     private String getRequestId() {

@@ -20,8 +20,16 @@ public class ImageSearchRequestValidator implements SearchRequestValidator {
 
     @Override
     public SearchValidateResult validate(SearchCommand command) {
-        if (command == null || command.getSearchType() != SearchType.IMAGE) {
+        if (command == null) {
+            return SearchValidateResult.fail(SearchErrorCode.SEARCH_PARAM_INVALID);
+        }
+
+        if (command.getSearchType() != SearchType.IMAGE) {
             return SearchValidateResult.fail(SearchErrorCode.SEARCH_TYPE_INVALID);
+        }
+
+        if (command.getTopK() == null || command.getTopK() <= 0) {
+            command.setTopK(searchProperties.getDefaultTopK());
         }
 
         if (isInvalidTopK(command.getTopK())) {

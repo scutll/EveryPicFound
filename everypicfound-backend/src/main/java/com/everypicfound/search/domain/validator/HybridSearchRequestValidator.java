@@ -20,8 +20,16 @@ public class HybridSearchRequestValidator implements SearchRequestValidator {
 
     @Override
     public SearchValidateResult validate(SearchCommand command) {
-        if (command == null || command.getSearchType() != SearchType.HYBRID) {
+        if (command == null) {
+            return SearchValidateResult.fail(SearchErrorCode.SEARCH_PARAM_INVALID);
+        }
+
+        if (command.getSearchType() != SearchType.HYBRID) {
             return SearchValidateResult.fail(SearchErrorCode.SEARCH_TYPE_INVALID);
+        }
+
+        if (command.getTopK() == null || command.getTopK() <= 0) {
+            command.setTopK(searchProperties.getDefaultTopK());
         }
 
         if (isInvalidTopK(command.getTopK())) {
@@ -50,6 +58,6 @@ public class HybridSearchRequestValidator implements SearchRequestValidator {
     }
 
     private boolean isInvalidTopK(Integer topK) {
-        return topK == null || topK <= 0 || topK > searchProperties.getMaxTopK();
+        return topK > searchProperties.getMaxTopK();
     }
 }

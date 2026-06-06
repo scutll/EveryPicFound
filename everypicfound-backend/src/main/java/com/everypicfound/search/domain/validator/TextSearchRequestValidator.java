@@ -20,8 +20,16 @@ public class TextSearchRequestValidator implements SearchRequestValidator {
 
     @Override
     public SearchValidateResult validate(SearchCommand command) {
-        if (command == null || command.getSearchType() != SearchType.TEXT) {
+        if (command == null) {
+            return SearchValidateResult.fail(SearchErrorCode.SEARCH_PARAM_INVALID);
+        }
+
+        if (command.getSearchType() != SearchType.TEXT) {
             return SearchValidateResult.fail(SearchErrorCode.SEARCH_TYPE_INVALID);
+        }
+
+        if (command.getTopK() == null || command.getTopK() <= 0) {
+            command.setTopK(searchProperties.getDefaultTopK());
         }
 
         if (isInvalidTopK(command.getTopK())) {
@@ -32,7 +40,7 @@ public class TextSearchRequestValidator implements SearchRequestValidator {
             return SearchValidateResult.fail(SearchErrorCode.SEARCH_TEXT_EMPTY);
         }
 
-        if (command.getQueryText().length() > searchProperties.getMaxQueryTextLength()) {
+        if (command.getQueryText().trim().length() > searchProperties.getMaxQueryTextLength()) {
             return SearchValidateResult.fail(SearchErrorCode.SEARCH_TEXT_TOO_LONG);
         }
 

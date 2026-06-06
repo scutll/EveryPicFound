@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 
 import com.everypicfound.common.exception.BizException;
 import com.everypicfound.search.error.SearchErrorCode;
+import com.everypicfound.vectorization.domain.fusion.HybridFusionRequest;
+import com.everypicfound.vectorization.domain.fusion.HybridFusionResult;
+import com.everypicfound.vectorization.domain.fusion.HybridFusionStrategy;
 
 @Component
 public class WeightedHybridFusionStrategy implements HybridFusionStrategy {

@@ -6,6 +6,9 @@ import com.everypicfound.common.exception.BizException;
 import com.everypicfound.search.domain.enums.SearchType;
 import com.everypicfound.search.error.SearchErrorCode;
 import com.everypicfound.vectorization.config.HybridFusionProperties;
+import com.everypicfound.vectorization.domain.fusion.HybridFusionRequest;
+import com.everypicfound.vectorization.domain.fusion.HybridFusionResult;
+import com.everypicfound.vectorization.domain.fusion.HybridFusionStrategy;
 
 import lombok.RequiredArgsConstructor;
 

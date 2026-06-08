@@ -12,11 +12,17 @@ import com.everypicfound.imageasset.application.dto.ImageAssetDTO;
 import com.everypicfound.imageasset.domain.enums.ImageStatus;
 import com.everypicfound.imageasset.domain.enums.VectorStatus;
 import com.everypicfound.search.application.context.SearchResultItem;
+import com.everypicfound.storage.api.FileStorageService;
 import com.everypicfound.vectorindex.domain.VectorSearchItem;
 
+import lombok.RequiredArgsConstructor;
+
 @Component
+@RequiredArgsConstructor
 public class DefaultSearchResultFilter implements SearchResultFilter {
     
+    private final FileStorageService fileStorageService;
+
     @Override
     public SearchFilterResult filter(SearchFilterContext context) {
         if (context == null || context.getVectorItems() == null || context.getVectorItems().isEmpty()) {
@@ -76,9 +82,11 @@ public class DefaultSearchResultFilter implements SearchResultFilter {
 
 
     private SearchResultItem buildSearchResultItem(VectorSearchItem vectorItem, ImageAssetDTO imageAsset) {
+        
         return SearchResultItem.builder()
                 .imageId(imageAsset.getId())
-                .imageUrl(imageAsset.getImageUrl())
+                .imageUrl(fileStorageService.getAccessUrl(imageAsset
+                        .getStoragePath()))
                 .fileName(imageAsset.getFileName())
                 .originalFileName(imageAsset.getOriginalFileName())
                 .score(vectorItem.getScore())

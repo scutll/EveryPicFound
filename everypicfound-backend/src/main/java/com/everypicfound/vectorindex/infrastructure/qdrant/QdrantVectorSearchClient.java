@@ -6,7 +6,6 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 
 import com.everypicfound.common.exception.ErrorCode;
-import com.everypicfound.vectorindex.api.VectorIndexClient;
 import com.everypicfound.vectorindex.api.VectorSearchClient;
 import com.everypicfound.vectorindex.domain.VectorSearchItem;
 import com.everypicfound.vectorindex.domain.VectorSearchRequest;

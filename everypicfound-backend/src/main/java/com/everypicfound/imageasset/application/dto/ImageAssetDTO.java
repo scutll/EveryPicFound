@@ -45,8 +45,8 @@ public class ImageAssetDTO {
     // 图片存储路径。
     private String storagePath;
 
-    // 图片访问地址。
-    private String imageUrl;
+    // 图片访问地址, 数据库中并没有url字段，弃用
+    // private String imageUrl;
 
     // 缩略图路径。
     private String thumbnailPath;

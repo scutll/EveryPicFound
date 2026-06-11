@@ -9,6 +9,7 @@ target/
 .idea/
 *.iml
 .vscode/
+.claude/
 
 # Logs
 logs/
@@ -35,3 +36,7 @@ application-local.yml
 docs/.obsidian
 docs/outdated
 inject_images/images/*
+
+# Node / Frontend
+node_modules/
+everypicfound-frontend/dist/

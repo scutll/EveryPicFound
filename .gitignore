@@ -34,3 +34,4 @@ application-local.yml
 # unrelated file from docs
 docs/.obsidian
 docs/outdated
+inject_images/images/*

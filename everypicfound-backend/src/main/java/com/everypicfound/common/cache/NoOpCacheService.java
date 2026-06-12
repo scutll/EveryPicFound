@@ -1,5 +1,7 @@
 package com.everypicfound.common.cache;
 
+import java.time.Duration;
+
 import org.springframework.stereotype.Component;
 
 
@@ -8,25 +10,25 @@ public class NoOpCacheService implements CacheService {
 
     @Override
     // 获取当前请求或任务上下文。
-    public Object get(String key) {
-        throw new UnsupportedOperationException("TODO");
+    public <T> T get(String key, Class<T> valueType) {
+        return null;
     }
 
     @Override
     // MVP 空实现，不写缓存。
-    public void put(String key, Object value) {
-        throw new UnsupportedOperationException("TODO");
+    public void put(String key, Object value, Duration ttl) {
+        //no op
     }
 
     @Override
     // MVP 空实现，不删除缓存。
     public void evict(String key) {
-        throw new UnsupportedOperationException("TODO");
+        //no op
     }
 
     @Override
     // MVP 空实现，默认不存在。
     public boolean exists(String key) {
-        throw new UnsupportedOperationException("TODO");
+        return false;
     }
 }

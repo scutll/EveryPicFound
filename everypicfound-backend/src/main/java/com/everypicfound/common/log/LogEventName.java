@@ -1,4 +1,5 @@
 package com.everypicfound.common.log;
+
 public enum LogEventName {
 
     // 上传开始日志事件。
@@ -35,5 +36,16 @@ public enum LogEventName {
     FILE_DELETE_SUCCESS,
 
     // 文件删除失败日志事件。
-    FILE_DELETE_FAILED
+    FILE_DELETE_FAILED,
+
+    // Cache 相关
+    CACHE_GET_FAILED,
+
+    CACHE_PUT_FAILED,
+
+    CACHE_EVICT_FAILED,
+
+    CACHE_EXISTS_FAILED,
+
+    CACHE_DESERIALIZE_FAILED
 }

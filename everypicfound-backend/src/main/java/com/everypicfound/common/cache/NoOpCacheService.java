@@ -2,10 +2,17 @@ package com.everypicfound.common.cache;
 
 import java.time.Duration;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 
 @Component
+@ConditionalOnProperty(
+    prefix = "everypicfound.cache",
+    name = "enabled",
+    havingValue = "false",
+    matchIfMissing = true
+)
 public class NoOpCacheService implements CacheService {
 
     @Override

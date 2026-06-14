@@ -69,6 +69,10 @@ everypicfound:
       text-weight: 0.5
       normalize-enabled: true
 
+    cache:
+      enabled: true
+      text-vector-ttl-seconds: 3600
+
   system-health:
     scheduled-enabled: true
     check-interval-ms: 60000
@@ -81,8 +85,13 @@ everypicfound:
     over-fetch-ratio: 3
     max-top-n: 200
     rerank-enabled: false
-    cache-enabled: false
     max-query-text-length: 500
+
+    #caching
+    cache-enabled: true
+    result-cache-ttl-seconds: 120
+    cache-empty-result: false
+
 
   cache:
     enabled: true

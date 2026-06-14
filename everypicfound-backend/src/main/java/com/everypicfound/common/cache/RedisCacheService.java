@@ -34,6 +34,11 @@ public class RedisCacheService implements CacheService {
     private final LogService logService;
 
     @Override
+    public boolean isEnabled() {
+        return true;
+    }
+
+    @Override
     public <T> T get(String key, Class<T> valueType) {
         validateKey(key);
         Assert.notNull(valueType, "Cache value must be not null");

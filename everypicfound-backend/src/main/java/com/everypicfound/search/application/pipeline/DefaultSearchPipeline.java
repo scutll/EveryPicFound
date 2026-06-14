@@ -1,5 +1,9 @@
 package com.everypicfound.search.application.pipeline;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Service;
 
 import com.everypicfound.common.exception.BizException;
@@ -13,6 +17,7 @@ import com.everypicfound.search.application.context.SearchResultItem;
 import com.everypicfound.search.config.SearchProperties;
 import com.everypicfound.search.domain.assembler.SearchAssemblerContext;
 import com.everypicfound.search.domain.assembler.SearchResultAssembler;
+import com.everypicfound.search.domain.cache.SearchResultCacheService;
 import com.everypicfound.search.domain.collection.SearchCollectionContext;
 import com.everypicfound.search.domain.collection.SearchCollectionResolver;
 import com.everypicfound.search.domain.filter.SearchFilterContext;
@@ -34,10 +39,6 @@ import com.everypicfound.vectorization.domain.query.QueryEmbedding;
 import com.everypicfound.vectorization.domain.query.QueryVectorizeRequest;
 import com.everypicfound.vectorization.domain.query.QueryVectorizer;
 import com.everypicfound.vectorization.domain.query.QueryVectorizerSelector;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.stream.Collectors;
 
 import lombok.RequiredArgsConstructor;
 
@@ -62,8 +63,20 @@ public class DefaultSearchPipeline implements SearchPipeline {
 
     private final SearchResultAssembler searchResultAssembler;
 
+    private final SearchResultCacheService searchResultCacheService;
+
     private final SearchProperties searchProperties;
 
+    /*
+    流程改为：
+    validateCommand
+    resolveCollection
+    resolveTopK
+    查搜索结果缓存
+    缓存命中：直接返回
+    缓存未命中：继续向量化和搜索
+    搜索完成：写入缓存
+    返回结果 */
     @Override
     public SearchResponse execute(SearchCommand command) {
         long startTime = System.currentTimeMillis();
@@ -72,11 +85,16 @@ public class DefaultSearchPipeline implements SearchPipeline {
 
         SearchCollectionContext collectionContext = searchCollectionResolver.resolve();
 
+        Integer topK = resolveTopK(command);
+
+        SearchResponse cachedResponse = searchResultCacheService.get(command, collectionContext, topK);
+        if (cachedResponse != null) {
+            return cachedResponse;
+        }
+
         QueryEmbedding queryEmbedding = vectorizeQuery(command);
 
         validateQueryEmbedding(queryEmbedding, collectionContext);
-
-        Integer topK = resolveTopK(command);
 
         Integer topN = calculateTopN(command, topK);
 
@@ -85,14 +103,19 @@ public class DefaultSearchPipeline implements SearchPipeline {
         ImageAssetBatchQueryResult imageAssetBatchQueryResult = batchQueryImageAssets(vectorSearchResult);
 
         SearchFilterResult searchFilterResult = filterResults(command, vectorSearchResult,
-                imageAssetBatchQueryResult);
+            imageAssetBatchQueryResult);
 
         RerankResult rerankResult = rerank(command, queryEmbedding, searchFilterResult);
 
         List<SearchResultItem> finalItems = truncateTopK(extractRerankItems(rerankResult), topK);
 
-        return assembleResponse(command, finalItems, topK, startTime, vectorSearchResult, searchFilterResult);
+        SearchResponse response = assembleResponse(command, finalItems, topK, startTime, vectorSearchResult, searchFilterResult);
+
+        searchResultCacheService.put(command, collectionContext, topK, response);
+
+        return response;
     }
+
 
     private void validateCommand(SearchCommand command) {
         SearchValidateResult result = searchValidatorManager.validate(command);

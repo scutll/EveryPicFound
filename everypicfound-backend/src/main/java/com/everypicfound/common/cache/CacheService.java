@@ -38,4 +38,7 @@ public interface CacheService {
      * @return 存在返回 true，否则返回 false
      */
     boolean exists(String key);
+
+    //判断是否全局已开启cache服务
+    boolean isEnabled();
 }

@@ -10,6 +10,7 @@ import com.everypicfound.search.domain.enums.SearchType;
 import com.everypicfound.search.error.SearchErrorCode;
 import com.everypicfound.vectorindex.collection.ActiveCollectionResolver;
 import com.everypicfound.vectorindex.collection.VectorCollectionConfig;
+import com.everypicfound.vectorization.domain.cache.TextVectorCacheService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -21,11 +22,20 @@ public class TextQueryVectorizer implements QueryVectorizer {
 
     private final ActiveCollectionResolver activeCollectionResolver;
 
+    private final TextVectorCacheService textVectorCacheService;// 新加缓存服务
+
     @Override
     public SearchType supportType() {
         return SearchType.TEXT;
     }
 
+    /**
+     * 1. 获取当前活动的向量集合配置
+     * 2. 从缓存中获取查询向量
+     * 3. 调用模型向量化服务获取查询向量
+     * 4. 缓存查询向量
+     * 5. 返回查询向量
+     */
     @Override
     public QueryEmbedding vectorize(QueryVectorizeRequest request) {
         if (request == null || request.getQueryText() == null || request.getQueryText().isBlank()) {
@@ -33,6 +43,14 @@ public class TextQueryVectorizer implements QueryVectorizer {
         }
 
         VectorCollectionConfig config = activeCollectionResolver.resolveActiveCollection();
+
+        QueryEmbedding cachedEmbedding = textVectorCacheService.get(
+                config.getModelName(),
+                config.getVectorDim(),
+                request.getQueryText());
+        if (cachedEmbedding != null) {
+            return cachedEmbedding;
+        }
 
         TextVectorizeRequest textRequest = TextVectorizeRequest.builder()
                 .text(request.getQueryText())
@@ -43,8 +61,16 @@ public class TextQueryVectorizer implements QueryVectorizer {
 
         VectorizeResult result = modelVectorizationClient.vectorizeText(textRequest);
 
-        return buildQueryEmbedding(SearchType.TEXT, result);
-    }
+        QueryEmbedding queryEmbedding = buildQueryEmbedding(SearchType.TEXT, result);
+
+        textVectorCacheService.put(
+                config.getModelName(),
+                config.getVectorDim(),
+                request.getQueryText(),
+                queryEmbedding);
+
+        return queryEmbedding;
+}
 
     private QueryEmbedding buildQueryEmbedding(SearchType searchType, VectorizeResult result) {
         if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {

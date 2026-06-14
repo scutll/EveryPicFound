@@ -38,4 +38,9 @@ public class NoOpCacheService implements CacheService {
     public boolean exists(String key) {
         return false;
     }
+
+    @Override
+    public boolean isEnabled() {
+        return false;
+    }
 }

@@ -12,6 +12,16 @@ spring:
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      database: 0
+      connect-timeout: 2s
+      timeout: 1s
+      repositories:
+        enabled: false
+
 
 mybatis-plus:
   mapper-locations: classpath:/mapper/*.xml
@@ -73,3 +83,10 @@ everypicfound:
     rerank-enabled: false
     cache-enabled: false
     max-query-text-length: 500
+
+  cache:
+    enabled: true
+    ttl-seconds: 300
+    key-prefix: epf:dev
+
+    

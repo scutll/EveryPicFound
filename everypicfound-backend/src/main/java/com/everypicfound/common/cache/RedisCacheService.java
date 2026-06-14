@@ -67,12 +67,12 @@ public class RedisCacheService implements CacheService {
     }
 
     @Override
-    public void put(String key, Object value, Duration tll) {
+    public void put(String key, Object value, Duration ttl) {
         validateKey(key);
         Assert.notNull(value, "Cache value must be not null");
 
         long startTime = System.currentTimeMillis();
-        Duration actualTtl = resolveTtl(tll);
+        Duration actualTtl = resolveTtl(ttl);
 
         try {
             String jsonValue = objectMapper.writeValueAsString(value);
@@ -153,7 +153,7 @@ public class RedisCacheService implements CacheService {
         try {
             redisTemplate.delete(key);
         } catch (DataAccessException e) {
-            recordError("evict-corrupted-value", LogEventName.CACHE_EVICT_FAILED, key, key, startTime, e);
+            recordError("evict-corrupted-value", LogEventName.CACHE_EVICT_FAILED, "REDIS_ACCESS_FAILED", key, startTime, e);
         }
     }
 

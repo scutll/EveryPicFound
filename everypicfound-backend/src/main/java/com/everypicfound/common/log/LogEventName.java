@@ -1,51 +1,59 @@
 package com.everypicfound.common.log;
 
+
+/**
+ * 系统标准日志事件名称。
+ *
+ * <p>
+ * 事件名称表示发生了什么，错误码表示为什么失败。
+ * </p>
+ */
 public enum LogEventName {
 
-    // 上传开始日志事件。
-    UPLOAD_START,
+    
+    /**
+     * 未知异常到达系统统一异常处理器。
+     */
+    COMMON_UNHANDLED_EXCEPTION,
 
-    // 上传成功日志事件。
-    UPLOAD_SUCCESS,
+    /**
+     * 系统异常发生。
+     */
+    SYSTEM_EXCEPTION_OCCURRED,
 
-    // 上传失败日志事件。
-    UPLOAD_FAILED,
+    /**
+     * 业务请求由于参数或状态规则被拒绝。
+     */
+    BUSINESS_REQUEST_REJECTED,
 
-    // 孤儿文件记录日志事件。
-    ORPHAN_FILE_RECORD,
+    /**
+     * 文件已保存，但元数据入库和补偿删除均失败。
+     */
+    ORPHAN_FILE_DETECTED,
 
-    // 向量写入成功日志事件。
-    VECTOR_UPSERT_SUCCESS,
+    /**
+     * 异步任务发布失败。
+     */
+    TASK_PUBLISH_FAILED,
 
-    // 搜索失败日志事件。
-    SEARCH_FAILED,
+    /**
+     * 向量化任务进入重试状态。
+     */
+    VECTORIZATION_RETRY_SCHEDULED,
 
-    // 文件保存成功日志事件。
-    FILE_SAVE_SUCCESS,
+    /**
+     * 向量化任务达到重试上限或发生不可恢复错误。
+     */
+    VECTORIZATION_DEAD_FAILED,
 
-    // 文件保存失败日志事件。
-    FILE_SAVE_FAILED,
+    /**
+     * 图片文件缺失，图片资产被标记为无效。
+     */
+    IMAGE_FILE_MISSING,
 
-    // 文件读取成功日志事件。
-    FILE_READ_SUCCESS,
-
-    // 文件读取失败日志事件。
-    FILE_READ_FAILED,
-
-    // 文件删除成功日志事件。
-    FILE_DELETE_SUCCESS,
-
-    // 文件删除失败日志事件。
-    FILE_DELETE_FAILED,
-
-    // Cache 相关
-    CACHE_GET_FAILED,
-
-    CACHE_PUT_FAILED,
-
-    CACHE_EVICT_FAILED,
-
-    CACHE_EXISTS_FAILED,
-
-    CACHE_DESERIALIZE_FAILED
+    /**
+     * 缓存发生异常，业务已降级为直接访问数据源。
+     */
+    CACHE_DEGRADED
+    
 }

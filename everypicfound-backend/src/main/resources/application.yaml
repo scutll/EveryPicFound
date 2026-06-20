@@ -32,6 +32,13 @@ server:
   port: 8080
 
 everypicfound:
+  log:
+    event-enabled: true
+    path: ./logs
+    max-file-size: 10MB
+    max-history: 7
+    total-size-cap: 500MB
+
   storage:
     base-path: ./data/images
     access-url-prefix: /images

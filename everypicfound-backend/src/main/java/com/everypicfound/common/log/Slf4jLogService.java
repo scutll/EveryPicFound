@@ -1,89 +1,116 @@
 package com.everypicfound.common.log;
 
-import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import com.everypicfound.common.context.RequestContext;
 import com.everypicfound.common.context.RequestContextHolder;
 
-import lombok.extern.slf4j.Slf4j;
+import lombok.RequiredArgsConstructor;
 
-@Slf4j
-@Component
+@Service
+@RequiredArgsConstructor
 public class Slf4jLogService implements LogService {
 
+    private static final String UNKNOWN_VALUE = "unknown";
+
+    // 不同日志通道使用独立appender
+    /**
+     * 固定错误日志通道。
+     */
+    private static final Logger ERROR_LOGGER = LoggerFactory.getLogger("EPF_ERROR");
+
+    /**
+     * 固定事件日志通道。
+     */
+    private static final Logger EVENT_LOGGER = LoggerFactory.getLogger("EPF_EVENT");
+
+
+    private final LogContextFormatter logContextFormatter;
+
+    private final LogProperties logProperties;
+
+
     @Override
-    // 记录普通业务节点日志。
-    public void recordBizLog(LogContext context) {
-        log.info("bizLog {}", formatContext(context));
+    public void recordError(LogContext context, Throwable throwable) {
+        LogContext enrichedContext = enrichContext(context);
+        String formattedContext = logContextFormatter.format(enrichedContext);
+
+        if (throwable == null) {
+            ERROR_LOGGER.error(formattedContext);
+            return;
+        }
+
+        ERROR_LOGGER.error(formattedContext, throwable);
     }
 
     @Override
-    // 记录成功节点日志。
-    public void recordSuccessLog(LogContext context) {
-        log.info("successLog {}", formatContext(context));
+    public void recordError(LogContext context) {
+        LogContext enrichedContext = enrichContext(context);
+        ERROR_LOGGER.error(logContextFormatter.format(enrichedContext));
     }
 
     @Override
-    // 记录异常日志。
-    public void recordErrorLog(LogContext context) {
-        log.error("errorLog {}", formatContext(context));
+    public void recordEvent(LogContext context) {
+        if (!logProperties.isEventEnabled()) {
+            return;
+        }
+
+        LogContext enrichedContext = enrichContext(context);
+        EVENT_LOGGER.warn(logContextFormatter.format(enrichedContext));
     }
 
-    @Override
-    // 记录状态变更日志。
-    public void recordStateChangeLog(LogContext context) {
-        log.info("stateChangeLog {}", formatContext(context));
-    }
-
-    @Override
-    // 记录慢链路日志。
-    public void recordSlowLog(LogContext context) {
-        log.warn("slowLog {}", formatContext(context));
-    }
-
-    // 格式化日志上下文，统一输出 requestId、traceId、bizId 等排查字段。
-    private String formatContext(LogContext context) {
+    /**
+     * 使用当前线程的 RequestContext 补齐调用方未提供的字段。
+     *
+     * <p>
+     * 优先使用调用方显式传入的值，其次使用 RequestContext 中的值。
+     * </p>
+     */
+    private LogContext enrichContext(LogContext context) {
         RequestContext requestContext = RequestContextHolder.get();
-        if (context == null) {
-            return "traceId=" + safe(requestContext == null ? null : requestContext.getTraceId())
-                    + ", requestId=" + safe(requestContext == null ? null : requestContext.getRequestId())
-                    + ", module=" + safe(requestContext == null ? null : requestContext.getModule())
-                    + ", bizType=, bizId=" + safe(requestContext == null ? null : requestContext.getBizId())
-                    + ", eventName=, status=, operation=" + safe(requestContext == null ? null : requestContext.getOperation())
-                    + ", costMs=, errorCode=, message=log context is null";
-        }// codex: 如果调用方传入的 context 为空，则从 RequestContext 中提取 traceId、requestId、module、bizId、operation 等字段，并在日志中注明 "log context is null"，以便排查日志上下文缺失问题。
 
-        return "traceId=" + safe(firstNonBlank(context.getTraceId(), requestContext == null ? null : requestContext.getTraceId()))
-                + ", requestId=" + safe(firstNonBlank(context.getRequestId(), requestContext == null ? null : requestContext.getRequestId()))
-                + ", module=" + safe(firstNonBlank(context.getModule(), requestContext == null ? null : requestContext.getModule()))
-                + ", bizType=" + safe(context.getBizType())
-                + ", bizId=" + safe(firstNonBlank(context.getBizId(), requestContext == null ? null : requestContext.getBizId()))
-                + ", eventName=" + safe(context.getEventName())
-                + ", status=" + safe(context.getStatus())
-                + ", operation=" + safe(firstNonBlank(context.getOperation(), requestContext == null ? null : requestContext.getOperation()))
-                + ", costMs=" + safeNumber(context.getCostMs())
-                + ", errorCode=" + safe(context.getErrorCode())
-                + ", message=" + safe(context.getMessage());
-    }// codex: 该方法会优先使用 context 中的 traceId、requestId、module、bizId、operation 等字段，如果这些字段为空，则回退到 RequestContext 中对应的字段，确保日志中尽可能包含完整的上下文信息，方便问题排查。
+        LogContext source = context == null
+                ? LogContext.builder()
+                        .message("log context is null")
+                        .build()
+                : context;
+
+        return source.toBuilder()
+                .requestId(firstNonBlank(
+                        source.getRequestId(),
+                        requestContext == null ? null : requestContext.getRequestId()))
+                .traceId(firstNonBlank(
+                        source.getTraceId(),
+                        requestContext == null ? null : requestContext.getTraceId()))
+                .bizId(firstNonBlank(
+                        source.getBizId(),
+                        requestContext == null ? null : requestContext.getBizId()))
+                .module(firstNonBlank(
+                        source.getModule(),
+                        requestContext == null
+                                ? UNKNOWN_VALUE
+                                : requestContext.getModule()))
+                .operation(firstNonBlank(
+                        source.getOperation(),
+                        requestContext == null
+                                ? UNKNOWN_VALUE
+                                : requestContext.getOperation()))
+                .build();
+    }
+
 
     private String firstNonBlank(String primary, String fallback) {
         if (primary != null && !primary.isBlank()) {
             return primary;
         }
-        return fallback;
+
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback;
+        }
+
+        return null;
     }
 
-    private String safeNumber(Number value) {
-        if (value == null) {
-            return "";
-        }
-        return String.valueOf(value);
-    }
-
-    private String safe(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\r", " ").replace("\n", " ");
-    }
 }

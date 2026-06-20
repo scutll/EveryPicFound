@@ -1,30 +1,166 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+    <!-- 从 Spring Boot 配置中读取日志参数 -->
+    <springProperty
+            scope="context"
+            name="LOG_PATH"
+            source="everypicfound.log.path"
+            defaultValue="./logs"/>
 
-    <property name="LOG_PATH" value="./logs"/>
+    <springProperty
+            scope="context"
+            name="MAX_FILE_SIZE"
+            source="everypicfound.log.max-file-size"
+            defaultValue="100MB"/>
 
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+    <springProperty
+            scope="context"
+            name="MAX_HISTORY"
+            source="everypicfound.log.max-history"
+            defaultValue="30"/>
+
+    <springProperty
+            scope="context"
+            name="TOTAL_SIZE_CAP"
+            source="everypicfound.log.total-size-cap"
+            defaultValue="5GB"/>
+
+    <!--
+        ROOT 日志使用 MDC。
+        Spring、MyBatis、连接池等框架日志不会经过 LogService，
+        因此需要从 MDC 中直接读取 requestId 和 traceId。
+    -->
+    <property
+            name="APP_PATTERN"
+            value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] requestId=%X{requestId} traceId=%X{traceId} %logger{36} - %msg%n%ex"/>
+
+    <!--
+        error.log 和 event.log 的消息已经由 LogContextFormatter
+        输出完整结构化字段，因此不重复输出 MDC 字段。
+    -->
+    <property
+            name="STRUCTURED_PATTERN"
+            value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n%ex"/>
+
+
+    <!-- 开发环境控制台Appender -->
+    <appender name="CONSOLE"
+              class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${APP_PATTERN}</pattern>
             <charset>UTF-8</charset>
         </encoder>
     </appender>
 
-    <appender name="APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <!-- APP\EVENT\ERROR的Appender
+    当前同步记录模式使用 LogBack 框架提供的实现
+    后续需要异步记录日志的时候再新增自定义Appender -->
+
+    <!-- app.log -->
+    <appender name="APP_FILE"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+
         <file>${LOG_PATH}/app.log</file>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${APP_PATTERN}</pattern>
             <charset>UTF-8</charset>
         </encoder>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_PATH}/app.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>30</maxHistory>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+
+            <fileNamePattern>
+                ${LOG_PATH}/archive/app.%d{yyyy-MM-dd}.%i.log.gz
+            </fileNamePattern>
+
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+
         </rollingPolicy>
     </appender>
 
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="APP_FILE"/>
-    </root>
+    <!-- error.log -->
+    <appender name="ERROR_FILE"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+
+        <file>${LOG_PATH}/error.log</file>
+
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${STRUCTURED_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+
+            <fileNamePattern>
+                ${LOG_PATH}/archive/error.%d{yyyy-MM-dd}.%i.log.gz
+            </fileNamePattern>
+
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+
+        </rollingPolicy>
+    </appender>
+
+    <!-- event.log -->
+    <appender name="EVENT_FILE"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+
+        <file>${LOG_PATH}/event.log</file>
+
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${STRUCTURED_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+
+            <fileNamePattern>
+                ${LOG_PATH}/archive/event.%d{yyyy-MM-dd}.%i.log.gz
+            </fileNamePattern>
+
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+
+        </rollingPolicy>
+    </appender>
+
+    <!--
+        additivity=false：
+        EPF_ERROR 不再继续传播给 ROOT，
+        防止一条错误同时写入 error.log 和 app.log。
+    -->
+    <logger name="EPF_ERROR"
+            level="ERROR"
+            additivity="false">
+        <appender-ref ref="ERROR_FILE"/>
+    </logger>
+
+    <!--
+        事件日志当前统一使用 WARN。
+    -->
+    <logger name="EPF_EVENT"
+            level="WARN"
+            additivity="false">
+        <appender-ref ref="EVENT_FILE"/>
+    </logger>
+
+    <!-- 开发环境：控制台 + app.log -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="APP_FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- 非开发环境：只写 app.log -->
+    <springProfile name="!dev">
+        <root level="INFO">
+            <appender-ref ref="APP_FILE"/>
+        </root>
+    </springProfile>
 
 </configuration>

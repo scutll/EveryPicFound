@@ -32,6 +32,9 @@ server:
   port: 8080
 
 everypicfound:
+  metrics:
+    enabled: true
+
   log:
     event-enabled: true
     path: ./logs
@@ -106,3 +109,26 @@ everypicfound:
     key-prefix: epf:dev
 
     
+# Actuator配置
+management:
+  endpoints:
+    web:
+      # 开放Actuator可通过Web访问的端点
+      exposure:
+        include:
+        - health
+        - info
+        - metrics #返回当前已注册的指标名称
+        - prometheus #Prometheus进行抓取的路径
+
+  endpoint:
+    health:
+     show-details: always
+
+  metrics:
+    tags:
+      application: ${spring.application.name} #公共标签
+    
+    distribution:
+      percentiles-histogram: #对everypicfound开头的Timer和DistributionSummary开启直方图桶，用于计算P50P95等指标
+        everypicfound: true

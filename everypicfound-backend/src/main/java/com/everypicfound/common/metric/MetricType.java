@@ -32,5 +32,15 @@ public enum MetricType {
      * 适用于文件大小、召回结果数量等离散样本。
      * </p>
      */
-    DISTRIBUTION_SUMMARY
+    DISTRIBUTION_SUMMARY,
+        
+    /**
+     * 当前瞬时状态值。
+     *
+     * <p>
+     * 例如线程池活跃线程数、队列长度、组件健康状态。
+     * Gauge 由专门的 MetricsBinder 注册，不通过 recordValue 记录。
+     * </p>
+     */
+    GAUGE
 }

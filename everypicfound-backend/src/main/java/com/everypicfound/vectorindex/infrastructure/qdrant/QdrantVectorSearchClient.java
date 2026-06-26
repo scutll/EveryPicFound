@@ -2,10 +2,16 @@ package com.everypicfound.vectorindex.infrastructure.qdrant;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.stereotype.Service;
 
 import com.everypicfound.common.exception.ErrorCode;
+import com.everypicfound.common.exception.SystemException;
+import com.everypicfound.common.metric.MetricName;
+import com.everypicfound.common.metric.MetricRecorder;
+import com.everypicfound.common.metric.MetricTag;
+import com.everypicfound.common.metric.MetricTags;
 import com.everypicfound.vectorindex.api.VectorSearchClient;
 import com.everypicfound.vectorindex.domain.VectorSearchItem;
 import com.everypicfound.vectorindex.domain.VectorSearchRequest;
@@ -20,24 +26,38 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-public class QdrantVectorSearchClient implements VectorSearchClient{
+public class QdrantVectorSearchClient implements VectorSearchClient {
+    
+
+    private static final String OPERATION_SEARCH = "search";
+
+    private static final String RESULT_SUCCESS = "success";
+    private static final String RESULT_REJECTED = "rejected";
+    private static final String RESULT_FAILED = "failed";
+
+    private final MetricRecorder metricRecorder;
+
 
     private final QdrantClient qdrantClient;
 
     @Override
     public VectorSearchResult search(VectorSearchRequest request) {
-        long startTime = System.currentTimeMillis();
+
+        long startNanos = System.nanoTime();
+        String result = RESULT_FAILED;
 
         try{
             ErrorCode errorCode = validateSearchRequest(request);
 
-            if(errorCode != null){
+            if (errorCode != null) {
+                result = RESULT_REJECTED;
+
                 return fail(
                         request == null ? null : request.getCollectionName(),
                         request == null ? null : request.getTopN(),
                         errorCode,
                         errorCode.getMessage(),
-                        costMs(startTime)
+                        elapsedMillis(startNanos)
                 );
             }
 
@@ -55,15 +75,20 @@ public class QdrantVectorSearchClient implements VectorSearchClient{
                     .map(this::toVectorSearchItem)
                             .toList();
 
-            return success(request.getCollectionName(), request.getTopN(), items, costMs(startTime));
-        } catch (Exception e) {
-            return fail(
-                    request == null? null : request.getCollectionName(),
-                    request == null? null : request.getTopN(),
-                    VectorIndexErrorCode.VECTOR_SEARCH_FAILED,                    
-                    e.getMessage(),
-                    costMs(startTime)
-            );
+            result = RESULT_SUCCESS;
+
+            metricRecorder.recordValue(MetricName.VECTOR_INDEX_SEARCH_RESULT_COUNT, items.size(), MetricTags.empty());
+            return success(request.getCollectionName(), request.getTopN(), items, elapsedMillis(startNanos));
+
+        } catch (InterruptedException exception) {
+
+            Thread.currentThread().interrupt();
+
+            throw new SystemException(VectorIndexErrorCode.VECTOR_SEARCH_FAILED, exception);
+        } catch (Exception exception) {
+            throw new SystemException(VectorIndexErrorCode.VECTOR_SEARCH_FAILED, exception);
+        } finally {
+            recordVectorIndexMetrics(OPERATION_SEARCH, result, startNanos);
         }
 
     }
@@ -135,7 +160,31 @@ public class QdrantVectorSearchClient implements VectorSearchClient{
                 .build();
     }
 
-    private Long costMs(long startTime) {
-        return System.currentTimeMillis() - startTime;
-    } 
+    
+    
+    private void recordVectorIndexMetrics(
+            String operation,
+            String result,
+            long startNanos) {
+
+        MetricTags tags = MetricTags.builder()
+                .tag(MetricTag.OPERATION, operation)
+                .tag(MetricTag.RESULT, result)
+                .build();
+
+        metricRecorder.increment(
+                MetricName.VECTOR_INDEX_REQUESTS,
+                tags);
+
+        metricRecorder.recordTimer(
+                MetricName.VECTOR_INDEX_DURATION,
+                elapsedMillis(startNanos),
+                tags);
+    }
+
+    private long elapsedMillis(long startNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(
+                System.nanoTime() - startNanos);
+    }
+    
 }

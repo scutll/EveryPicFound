@@ -6,13 +6,19 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.everypicfound.search.observability.SearchObservationContext;
+import com.everypicfound.search.observability.SearchObservationContext.CacheLookupStatus;
+import com.everypicfound.search.observability.SearchObservationContext.CacheWriteStatus;
+
 import com.everypicfound.common.cache.CacheKeyBuilder;
 import com.everypicfound.common.cache.CacheService;
+import com.everypicfound.common.log.LogContext;
+import com.everypicfound.common.log.LogEventName;
+import com.everypicfound.common.log.LogService;
+import com.everypicfound.common.log.LogStatus;
 import com.everypicfound.search.application.command.SearchCommand;
 import com.everypicfound.search.application.context.SearchResponse;
 import com.everypicfound.search.application.context.SearchResultItem;
@@ -26,7 +32,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class DefaultSearchResultCacheService implements SearchResultCacheService{
 
-    private static final Logger log = LoggerFactory.getLogger(DefaultSearchResultCacheService.class);
+    private static LogService logService;
 
     private static final String HASH_ALGORITHM = "SHA-256";
 
@@ -45,14 +51,21 @@ public class DefaultSearchResultCacheService implements SearchResultCacheService
                             SearchCollectionContext collectionContext,
                             Integer topK) {
         if (!isCacheableTextSearch(command, collectionContext, topK)) {
+            SearchObservationContext.markCacheLookup(CacheLookupStatus.NOT_APPLICABLE);
             return null;
         }
 
         try {
             String cacheKey = buildCacheKey(command.getQueryText(), collectionContext, topK);
-            return cacheService.get(cacheKey, SearchResponse.class);
-        } catch (RuntimeException e) {
-            log.warn("Search result cache get failed.", e);
+            SearchResponse response = cacheService.get(cacheKey, SearchResponse.class);
+
+            SearchObservationContext.markCacheLookup(response == null ? CacheLookupStatus.MISS : CacheLookupStatus.HIT);
+            
+            return response;
+        } catch (RuntimeException exception) {
+
+            SearchObservationContext.markCacheLookup(CacheLookupStatus.ERROR);
+            recordCacheFailure("get", exception);
             //缓存是旁路优化，搜索是主流程。旁路失败，只记录日志；主流程继续
             return null;
         }
@@ -65,10 +78,9 @@ public class DefaultSearchResultCacheService implements SearchResultCacheService
                     SearchCollectionContext collectionContext,
                     Integer topK,
                     SearchResponse response) {
-        if (!isCacheableTextSearch(command, collectionContext, topK)) {
-            return;
-        }
-        if (!shouldCacheResponse(response)) {
+        if (!isCacheableTextSearch(command, collectionContext, topK) || !shouldCacheResponse(response)) {
+
+            SearchObservationContext.markCacheWrite(CacheWriteStatus.SKIPPED);
             return;
         }
 
@@ -76,8 +88,11 @@ public class DefaultSearchResultCacheService implements SearchResultCacheService
             String cacheKey = buildCacheKey(command.getQueryText(), collectionContext, topK);
             Duration ttl = getResultCacheTtl();
             cacheService.put(cacheKey, response, ttl);
+
+            SearchObservationContext.markCacheWrite(CacheWriteStatus.SUCCESS);
         } catch (RuntimeException e) {
-            log.warn("Search result cache put failed.", e);
+            SearchObservationContext.markCacheWrite(CacheWriteStatus.ERROR);
+            recordCacheFailure("get", e);
             //缓存是旁路优化，搜索是主流程。旁路失败，只记录日志；主流程继续
         }
     }
@@ -91,6 +106,8 @@ public class DefaultSearchResultCacheService implements SearchResultCacheService
                 || !isValidCollectionContext(collectionContext)
                 || topK == null
                 || topK <= 0) {
+            SearchObservationContext.markCacheLookup(CacheLookupStatus.NOT_APPLICABLE);
+
             return;
         }
 
@@ -98,7 +115,8 @@ public class DefaultSearchResultCacheService implements SearchResultCacheService
             String cacheKey = buildCacheKey(queryText, collectionContext, topK);
             cacheService.evict(cacheKey);
         } catch (RuntimeException e) {
-            log.warn("Search result cache evict failed.", e);
+            SearchObservationContext.markCacheLookup(CacheLookupStatus.ERROR);
+            recordCacheFailure("get", e);
         }
     }
 
@@ -180,6 +198,36 @@ public class DefaultSearchResultCacheService implements SearchResultCacheService
         }
         return hex.toString();
     }//hashText 和 toHex 这两个函数的组合，能把任意长度的搜索词转化为固定长度的字符串（SHA-256 的输出是 64 个字符的十六进制字符串）。这样既保证了 key 的长度可控，又能有效区分不同的搜索词，减少缓存冲突的概率。
+
+
+    private void recordCacheFailure(
+        String operation,
+        RuntimeException exception
+    ) {
+        LogContext context = LogContext.builder()
+                    .module("search")
+                    .bizType("CACHE")
+                    .operation(operation)
+                    .eventName(LogEventName.SYSTEM_EXCEPTION_OCCURRED)
+                    .status(LogStatus.FAILED)
+                    .errorCode("SEARCH_RESULT_CACHE_FAILED")
+                    .message("search result cache operation failed")
+                    .build();
+
+        logService.recordError(context, exception);
+
+
+        logService.recordEvent(
+                LogContext.builder()
+                        .module("search")
+                        .bizType("CACHE")
+                        .operation(operation)
+                        .eventName(LogEventName.CACHE_DEGRADED)
+                        .status(LogStatus.DEGRADED)
+                        .errorCode("SEARCH_RESULT_CACHE_FAILED")
+                        .message("search continues without result cache")
+                        .build());
+    }
 
 }
 

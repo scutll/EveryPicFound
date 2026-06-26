@@ -8,9 +8,12 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
-import com.everypicfound.common.log.LogContext;
-import com.everypicfound.common.log.LogEventName;
-import com.everypicfound.common.log.LogService;
+import com.everypicfound.common.exception.CommonErrorCode;
+import com.everypicfound.common.exception.SystemException;
+import com.everypicfound.common.metric.MetricName;
+import com.everypicfound.common.metric.MetricRecorder;
+import com.everypicfound.common.metric.MetricTag;
+import com.everypicfound.common.metric.MetricTags;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -21,17 +24,13 @@ import lombok.RequiredArgsConstructor;
 @ConditionalOnProperty(prefix = "everypicfound.cache", name = "enabled", havingValue = "true")
 public class RedisCacheService implements CacheService {
 
-    private static final String MODULE = "common";
-
-    private static final String BIZ_TYPE = "CACHE";
-
     private final StringRedisTemplate redisTemplate;
 
     private final ObjectMapper objectMapper;
 
     private final CacheProperties cacheProperties;
 
-    private final LogService logService;
+    private final MetricRecorder metricRecorder;
 
     @Override
     public boolean isEnabled() {
@@ -44,26 +43,49 @@ public class RedisCacheService implements CacheService {
         Assert.notNull(valueType, "Cache value must be not null");
 
         long startTime = System.currentTimeMillis();
+        String result = "failed";
 
         try {
             String jsonValue = redisTemplate.opsForValue().get(key);
 
             if (jsonValue == null) {
+                result = "miss";
                 return null;
             }
+            T value = objectMapper.readValue(jsonValue, valueType);
+            result = "success";
+            return value;
 
-            return objectMapper.readValue(jsonValue, valueType);
-        } catch (JsonProcessingException e) {
-            recordError("get", LogEventName.CACHE_GET_FAILED, "CACHE_DESERIALIZE_FAILED", key, startTime, e);
+        } catch (JsonProcessingException exception) {
+            result = "deserialize_failed";
 
-            evictCorruptedValue(key);
-            return null;
-        } catch (DataAccessException e) {
-            recordError("get", LogEventName.CACHE_GET_FAILED, "REDIS_ACCESS_FAILED", key, startTime, e);
+            removeCorruptedValue(key, exception);
+            throw new SystemException(CommonErrorCode.SYSTEM_ERROR, exception);
+        } catch (DataAccessException exception) {
+            result = "failed";
 
-            return null;
+            throw new SystemException(CommonErrorCode.SERVICE_UNAVAILABLE, exception);
+        } finally {
+            recordRedisMetrics("get", result, startTime);
         }
 
+    }
+
+    private void removeCorruptedValue(
+            String key,
+            JsonProcessingException deserializeException) {
+
+        try {
+            redisTemplate.delete(key);
+        } catch (DataAccessException cleanupException) {
+            /*
+             * 反序列化失败是主异常；
+             * 删除损坏缓存失败是处理主异常时发生的次要异常。
+             * 也是抛出异常的一种
+             */
+            deserializeException.addSuppressed(
+                    cleanupException);
+        }
     }
 
     @Override
@@ -72,28 +94,24 @@ public class RedisCacheService implements CacheService {
         Assert.notNull(value, "Cache value must be not null");
 
         long startTime = System.currentTimeMillis();
-        Duration actualTtl = resolveTtl(ttl);
-
+        String result = "failed";
+        
         try {
+            Duration actualTtl = resolveTtl(ttl);
             String jsonValue = objectMapper.writeValueAsString(value);
 
             redisTemplate.opsForValue().set(key, jsonValue, actualTtl);
-        } catch (JsonProcessingException e) {
-            recordError(
-                    "put",
-                    LogEventName.CACHE_PUT_FAILED,
-                    "CACHE_SERIALIZE_FAILED",
-                    key,
-                    startTime,
-                    e);
-        } catch (DataAccessException e) {
-            recordError(
-                    "put",
-                    LogEventName.CACHE_PUT_FAILED,
-                    "REDIS_ACCESS_FAILED",
-                    key,
-                    startTime,
-                    e);
+            result = "success";
+        } catch (JsonProcessingException exception) {
+            result = "serialize_failed";
+            
+            throw new SystemException(CommonErrorCode.SYSTEM_ERROR, exception);
+        } catch (DataAccessException exception) {
+            result = "failed";
+
+            throw new SystemException(CommonErrorCode.SERVICE_UNAVAILABLE, exception);
+        } finally {
+            recordRedisMetrics("put", result, startTime);
         }
     }
 
@@ -102,17 +120,17 @@ public class RedisCacheService implements CacheService {
         validateKey(key);
 
         long startTime = System.currentTimeMillis();
+        String result = "failed";
 
         try {
             redisTemplate.delete(key);
+            result = "success";
         } catch (DataAccessException exception) {
-            recordError(
-                    "evict",
-                    LogEventName.CACHE_EVICT_FAILED,
-                    "REDIS_ACCESS_FAILED",
-                    key,
-                    startTime,
-                    exception);
+            result = "failed"; 
+
+            throw new SystemException(CommonErrorCode.SERVICE_UNAVAILABLE, exception);
+        } finally {
+            recordRedisMetrics("evict", result, startTime);
         }
     }
 
@@ -121,19 +139,19 @@ public class RedisCacheService implements CacheService {
         validateKey(key);
 
         long startTime = System.currentTimeMillis();
-
+        String result = "failed";
         try {
-            return Boolean.TRUE.equals(redisTemplate.hasKey(key));
+            Boolean exists = Boolean.TRUE.equals(redisTemplate.hasKey(key));
+            result = exists ? "present" : "absent";
+            return exists;
         } catch (DataAccessException exception) {
-            recordError(
-                    "exists",
-                    LogEventName.CACHE_EXISTS_FAILED,
-                    "REDIS_ACCESS_FAILED",
-                    key,
-                    startTime,
-                    exception);
+            result = "failed";
 
-            return false;
+            throw new SystemException(
+                    CommonErrorCode.SERVICE_UNAVAILABLE,
+                    exception);
+        } finally {
+            recordRedisMetrics("exists", result, startTime);
         }
     }
 
@@ -141,21 +159,6 @@ public class RedisCacheService implements CacheService {
         Assert.hasText(key, "Cache key must not be blank");
     }
 
-    private String buildErrorMessage(String key, Exception exception) {
-        return "key=" + safe(key)
-                + ", exceptionType=" + exception.getClass().getSimpleName()
-                + ", exceptionMessage=" + safe(exception.getMessage());
-    }
-
-    private void evictCorruptedValue(String key) {
-        long startTime = System.currentTimeMillis();
-
-        try {
-            redisTemplate.delete(key);
-        } catch (DataAccessException e) {
-            recordError("evict-corrupted-value", LogEventName.CACHE_EVICT_FAILED, "REDIS_ACCESS_FAILED", key, startTime, e);
-        }
-    }
 
     private Duration resolveTtl(Duration ttl) {
         Duration actualTtl = ttl == null
@@ -168,32 +171,20 @@ public class RedisCacheService implements CacheService {
 
         return actualTtl;
     }
+    
+    private void recordRedisMetrics(
+                String operation,
+                String result,
+                long startTime
+    ) {
+        MetricTags tags = MetricTags.builder()
+                .tag(MetricTag.OPERATION, operation)
+                .tag(MetricTag.RESULT, result)
+                .build();
+        
+        metricRecorder.increment(MetricName.REDIS_OPERATIONS, tags);
 
-    private void recordError(
-            String operation,
-            LogEventName eventName,
-            String errorCode,
-            String key,
-            long startTime,
-            Exception exception) {
-
-        logService.recordErrorLog(
-                LogContext.builder()
-                        .module(MODULE)
-                        .bizType(BIZ_TYPE)
-                        .operation(operation)
-                        .eventName(eventName.name())
-                        .status("FAILED")
-                        .costMs(System.currentTimeMillis() - startTime)
-                        .errorCode(errorCode)
-                        .message(buildErrorMessage(key, exception))
-                        .build());
+        metricRecorder.recordTimer(MetricName.REDIS_DURATION, System.currentTimeMillis() - startTime, tags);
     }
 
-    private String safe(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\r", " ").replace("\n", " ");
-    }
 }

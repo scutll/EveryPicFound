@@ -6,6 +6,19 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+
+import com.everypicfound.common.exception.ErrorCode;
+import com.everypicfound.common.exception.SystemException;
+import com.everypicfound.common.metric.MetricName;
+import com.everypicfound.common.metric.MetricRecorder;
+import com.everypicfound.common.metric.MetricTag;
+import com.everypicfound.common.metric.MetricTags;
+import com.everypicfound.search.domain.enums.SearchType;
+import com.everypicfound.search.observability.SearchObservationContext;
+
 import com.everypicfound.common.exception.BizException;
 import com.everypicfound.imageasset.application.command.BatchImageAssetQuery;
 import com.everypicfound.imageasset.application.dto.ImageAssetDTO;
@@ -45,6 +58,40 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class DefaultSearchPipeline implements SearchPipeline {
+
+    // 指标字段
+    private static final String RESULT_SUCCESS = "success";
+    private static final String RESULT_REJECTED = "rejected";
+    private static final String RESULT_FAILED = "failed";
+
+    private static final String STAGE_VALIDATE = "validate";
+    private static final String STAGE_RESOLVE_COLLECTION = "resolve_collection";
+    private static final String STAGE_RESULT_CACHE_GET = "result_cache_get";
+    private static final String STAGE_QUERY_VECTORIZE = "query_vectorize";
+    private static final String STAGE_EMBEDDING_VALIDATE = "embedding_validate";
+    private static final String STAGE_OVERFETCH = "overfetch";
+    private static final String STAGE_VECTOR_RECALL = "vector_recall";
+    private static final String STAGE_BACKFILL = "backfill";
+    private static final String STAGE_FILTER = "filter";
+    private static final String STAGE_RERANK = "rerank";
+    private static final String STAGE_ASSEMBLE = "assemble";
+    private static final String STAGE_RESULT_CACHE_PUT = "result_cache_put";
+
+    private static final String ITEM_STAGE_RECALL = "recall";
+    private static final String ITEM_STAGE_BACKFILL_REQUESTED = "backfill_requested";
+    private static final String ITEM_STAGE_BACKFILL_RETURNED = "backfill_returned";
+    private static final String ITEM_STAGE_FILTER_OUTPUT = "filter_output";
+
+    private static final String FILTER_REASON_ORPHAN_VECTOR = "orphan_vector";
+    private static final String FILTER_REASON_INVALID_IMAGE = "invalid_image";
+
+    private static final String EMBEDDING_REASON_EMPTY = "empty";
+    private static final String EMBEDDING_REASON_DIMENSION_MISMATCH = "dimension_mismatch";
+
+    //Services
+
+    private final MetricRecorder metricRecorder;
+
     private final SearchValidatorManager searchValidatorManager;
 
     private final SearchCollectionResolver searchCollectionResolver;
@@ -79,39 +126,141 @@ public class DefaultSearchPipeline implements SearchPipeline {
     返回结果 */
     @Override
     public SearchResponse execute(SearchCommand command) {
-        long startTime = System.currentTimeMillis();
 
-        validateCommand(command);
+        long searchStartTime = System.currentTimeMillis();
 
-        SearchCollectionContext collectionContext = searchCollectionResolver.resolve();
+        SearchType searchType = command == null ? null : command.getSearchType();
 
-        Integer topK = resolveTopK(command);
+        /*
+         * validate 阶段同时完成业务参数校验和 topK 解析。
+         */
 
-        SearchResponse cachedResponse = searchResultCacheService.get(command, collectionContext, topK);
+        Integer topK = observeStage(searchType, STAGE_VALIDATE, ()->{
+            validateCommand(command);
+            return resolveTopK(command);
+        });
+
+
+        SearchCollectionContext collectionContext = observeStage(searchType, STAGE_RESOLVE_COLLECTION,
+                searchCollectionResolver::resolve);
+        
+        SearchResponse cachedResponse = observeCacheGet(searchType, command, collectionContext, topK);
+
         if (cachedResponse != null) {
             return cachedResponse;
         }
 
-        QueryEmbedding queryEmbedding = vectorizeQuery(command);
+        QueryEmbedding queryEmbedding = observeStage(
+                searchType,
+                STAGE_QUERY_VECTORIZE,
+                () -> vectorizeQuery(command));
 
-        validateQueryEmbedding(queryEmbedding, collectionContext);
+        observeStage(
+                searchType,
+                STAGE_EMBEDDING_VALIDATE,
+                () -> {
+                    validateQueryEmbedding(
+                            queryEmbedding,
+                            collectionContext,
+                            searchType);
 
-        Integer topN = calculateTopN(command, topK);
+                    return null;
+                });
 
-        VectorSearchResult vectorSearchResult = searchVector(collectionContext, queryEmbedding, topN);
+        Integer topN = observeStage(
+                searchType,
+                STAGE_OVERFETCH,
+                () -> calculateTopN(
+                        command,
+                        topK));
 
-        ImageAssetBatchQueryResult imageAssetBatchQueryResult = batchQueryImageAssets(vectorSearchResult);
+        recordSearchTopN(
+                searchType,
+                topN);
 
-        SearchFilterResult searchFilterResult = filterResults(command, vectorSearchResult,
-            imageAssetBatchQueryResult);
+        VectorSearchResult vectorSearchResult = observeStage(
+                searchType,
+                STAGE_VECTOR_RECALL,
+                () -> searchVector(
+                        collectionContext,
+                        queryEmbedding,
+                        topN));
 
-        RerankResult rerankResult = rerank(command, queryEmbedding, searchFilterResult);
+        recordPipelineItemCount(
+                searchType,
+                ITEM_STAGE_RECALL,
+                getVectorRecallCount(vectorSearchResult));
+
+        recordPipelineItemCount(
+                searchType,
+                ITEM_STAGE_BACKFILL_REQUESTED,
+                countBackfillRequested(vectorSearchResult));
+
+        ImageAssetBatchQueryResult imageAssetBatchQueryResult = observeStage(
+                searchType,
+                STAGE_BACKFILL,
+                () -> batchQueryImageAssets(
+                        vectorSearchResult));
+
+        recordPipelineItemCount(
+                searchType,
+                ITEM_STAGE_BACKFILL_RETURNED,
+                countBackfillReturned(
+                        imageAssetBatchQueryResult));
+
+        SearchFilterResult searchFilterResult = observeStage(
+                searchType,
+                STAGE_FILTER,
+                () -> filterResults(
+                        command,
+                        vectorSearchResult,
+                        imageAssetBatchQueryResult));
+
+        recordPipelineItemCount(
+                searchType,
+                ITEM_STAGE_FILTER_OUTPUT,
+                countFilterOutput(
+                        searchFilterResult));
+
+        recordFilteredItemCount(
+                searchType,
+                FILTER_REASON_ORPHAN_VECTOR,
+                getOrphanVectorCount(
+                        searchFilterResult));
+
+        recordFilteredItemCount(
+                searchType,
+                FILTER_REASON_INVALID_IMAGE,
+                getInvalidImageCount(
+                        searchFilterResult));
+
+        RerankResult rerankResult = observeStage(
+                searchType,
+                STAGE_RERANK,
+                () -> rerank(
+                        command,
+                        queryEmbedding,
+                        searchFilterResult));
 
         List<SearchResultItem> finalItems = truncateTopK(extractRerankItems(rerankResult), topK);
 
-        SearchResponse response = assembleResponse(command, finalItems, topK, startTime, vectorSearchResult, searchFilterResult);
+        SearchResponse response = observeStage(
+                searchType,
+                STAGE_ASSEMBLE,
+                () -> assembleResponse(
+                        command,
+                        finalItems,
+                        topK,
+                        searchStartTime,
+                        vectorSearchResult,
+                        searchFilterResult));
 
-        searchResultCacheService.put(command, collectionContext, topK, response);
+        observeCachePut(
+                searchType,
+                command,
+                collectionContext,
+                topK,
+                response);
 
         return response;
     }
@@ -149,19 +298,40 @@ public class DefaultSearchPipeline implements SearchPipeline {
         return queryEmbedding;
     }
 
-    private void validateQueryEmbedding(QueryEmbedding queryEmbedding, SearchCollectionContext collectionContext) {
+    private void validateQueryEmbedding(QueryEmbedding queryEmbedding, SearchCollectionContext collectionContext,
+            SearchType searchType) {
         if (queryEmbedding == null
                 || queryEmbedding.getEmbedding() == null
                 || queryEmbedding.getEmbedding().isEmpty()
                 || queryEmbedding.getDim() == null) {
+
+            recordEmbeddingInvalid(searchType, EMBEDDING_REASON_EMPTY);
             throw new BizException(SearchErrorCode.QUERY_EMBEDDING_EMPTY);
         }
 
         if (collectionContext == null
                 || collectionContext.getVectorDim() == null
                 || !collectionContext.getVectorDim().equals(queryEmbedding.getDim())) {
+
+            recordEmbeddingInvalid(searchType, EMBEDDING_REASON_DIMENSION_MISMATCH);
             throw new BizException(SearchErrorCode.QUERY_VECTOR_DIM_MISMATCH);
         }
+    }
+    
+    private void recordEmbeddingInvalid(
+            SearchType searchType,
+            String reason) {
+
+        metricRecorder.increment(
+                MetricName.SEARCH_EMBEDDING_INVALID,
+                MetricTags.builder()
+                        .tag(
+                                MetricTag.SEARCH_TYPE,
+                                resolveSearchType(searchType))
+                        .tag(
+                                MetricTag.REASON,
+                                reason)
+                        .build());
     }
 
     private Integer resolveTopK(SearchCommand command) {
@@ -197,7 +367,13 @@ public class DefaultSearchPipeline implements SearchPipeline {
                         .build());
 
         if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
-            throw new BizException(SearchErrorCode.VECTOR_SEARCH_FAILED);
+            throw new SystemException(SearchErrorCode.VECTOR_SEARCH_FAILED);
+        }
+
+        if (!Boolean.TRUE.equals(result.getSuccess())) {
+            ErrorCode errorCode = result.getErrorCode();
+
+            throw new SystemException(errorCode == null? SearchErrorCode.VECTOR_SEARCH_FAILED : errorCode);
         }
 
         return result;
@@ -211,10 +387,16 @@ public class DefaultSearchPipeline implements SearchPipeline {
                         .filter(imageId -> imageId != null)
                         .collect(Collectors.toList());
 
-        return imageAssetQueryService.batchQueryByIds(
+        ImageAssetBatchQueryResult result = imageAssetQueryService.batchQueryByIds(
                 BatchImageAssetQuery.builder()
                         .imageIds(imageIds)
                         .build());
+
+        if (result == null) {
+            throw new SystemException(SearchErrorCode.IMAGE_ASSET_QUERY_FAILED);
+        }
+
+        return result;
     }
 
     private SearchFilterResult filterResults(SearchCommand command,
@@ -315,4 +497,221 @@ public class DefaultSearchPipeline implements SearchPipeline {
 
         return searchFilterResult.getInvalidImageCount();
     }
+
+    //数量Value类型指标记录方法
+    private void recordSearchTopN(
+            SearchType searchType,
+            Integer topN) {
+
+        if (topN == null || topN < 0) {
+            return;
+        }
+
+        metricRecorder.recordValue(
+                MetricName.SEARCH_TOP_N,
+                topN,
+                searchTypeTags(searchType));
+    }
+
+    private void recordPipelineItemCount(
+            SearchType searchType,
+            String stage,
+            int count) {
+
+        metricRecorder.recordValue(
+                MetricName.SEARCH_PIPELINE_ITEM_COUNT,
+                Math.max(count, 0),
+                MetricTags.builder()
+                        .tag(
+                                MetricTag.SEARCH_TYPE,
+                                resolveSearchType(searchType))
+                        .tag(
+                                MetricTag.STAGE,
+                                stage)
+                        .build());
+    }
+
+    private void recordFilteredItemCount(
+            SearchType searchType,
+            String reason,
+            int count) {
+
+        metricRecorder.recordValue(
+                MetricName.SEARCH_FILTERED_ITEM_COUNT,
+                Math.max(count, 0),
+                MetricTags.builder()
+                        .tag(
+                                MetricTag.SEARCH_TYPE,
+                                resolveSearchType(searchType))
+                        .tag(
+                                MetricTag.REASON,
+                                reason)
+                        .build());
+    }
+
+    private MetricTags searchTypeTags(
+            SearchType searchType) {
+
+        return MetricTags.builder()
+                .tag(
+                        MetricTag.SEARCH_TYPE,
+                        resolveSearchType(searchType))
+                .build();
+    }
+
+    private int countBackfillRequested(
+            VectorSearchResult result) {
+
+        if (result == null || result.getItems() == null) {
+            return 0;
+        }
+
+        return (int) result.getItems()
+                .stream()
+                .map(VectorSearchItem::getVectorId)
+                .filter(imageId -> imageId != null)
+                .count();
+    }
+
+    private int countBackfillReturned(
+            ImageAssetBatchQueryResult result) {
+
+        if (result == null || result.getItems() == null) {
+            return 0;
+        }
+
+        return result.getItems().size();
+    }
+
+    private int countFilterOutput(
+            SearchFilterResult result) {
+
+        if (result == null || result.getItems() == null) {
+            return 0;
+        }
+
+        return result.getItems().size();
+    }
+
+    
+    //方法调用wrapper，pipeline上调用方法并记录指标
+    private <T> T observeStage(
+            SearchType searchType,
+            String stage,
+            Supplier<T> action
+    ) {
+        long startNanos = System.nanoTime();
+        String result = RESULT_FAILED;
+
+        try {
+            T value = action.get();
+            result = RESULT_SUCCESS;
+            return value;
+        } catch (BizException exception) {
+            result = RESULT_REJECTED;
+            throw exception;
+        } finally {
+            recordStageMetrics(searchType, stage, result, startNanos);
+        }
+    }
+    
+    private void recordStageMetrics(
+            SearchType searchType,
+            String stage,
+            String result,
+            long startNanos) {
+
+        metricRecorder.recordTimer(
+                MetricName.SEARCH_STAGE_DURATION,
+                elapsedMillis(startNanos),
+                MetricTags.builder()
+                        .tag(
+                                MetricTag.SEARCH_TYPE,
+                                resolveSearchType(searchType))
+                        .tag(
+                                MetricTag.STAGE,
+                                stage)
+                        .tag(
+                                MetricTag.RESULT,
+                                result)
+                        .build());
+    }
+
+    private String resolveSearchType(
+            SearchType searchType) {
+
+        if (searchType == null) {
+            return "unknown";
+        }
+
+        return searchType.name()
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private long elapsedMillis(long startNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(
+                System.nanoTime() - startNanos);
+    }
+
+
+
+    /*
+    * SearchResultService(Cache调用的Wrapper) 在get、put等方法上并不抛出异常，而是在异常/无缓存记录的时候统一返回null，并且错误信息在ThreadLocal中记录(SearchObservationContext) 因此需要在结果null时候调取Context查看具体错误信息并抛出/处理
+    */
+
+    private SearchResponse observeCacheGet(
+        SearchType searchType,
+        SearchCommand command,
+        SearchCollectionContext collectionContext,
+            Integer topK) {
+
+        long startNanos = System.nanoTime();
+        String result = RESULT_FAILED;
+
+        try {
+            SearchResponse response = searchResultCacheService.get(command, collectionContext, topK);
+
+            result = SearchObservationContext.getCacheGetStageResult();
+
+            return response;
+        } catch (BizException exception) {
+            result = RESULT_REJECTED;
+            throw exception;
+        } finally {
+            recordStageMetrics(searchType, STAGE_RESULT_CACHE_GET, result, startNanos);
+        }
+    }
+
+    
+    private void observeCachePut(
+            SearchType searchType,
+            SearchCommand command,
+            SearchCollectionContext collectionContext,
+            Integer topK,
+            SearchResponse response) {
+
+        long startNanos = System.nanoTime();
+        String result = RESULT_FAILED;
+
+        try {
+            searchResultCacheService.put(
+                    command,
+                    collectionContext,
+                    topK,
+                    response);
+
+            result = SearchObservationContext
+                    .getCachePutStageResult();
+        } catch (BizException exception) {
+            result = RESULT_REJECTED;
+            throw exception;
+        } finally {
+            recordStageMetrics(
+                    searchType,
+                    STAGE_RESULT_CACHE_PUT,
+                    result,
+                    startNanos);
+        }
+    }
+
 }

@@ -5,13 +5,15 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.everypicfound.common.cache.CacheKeyBuilder;
 import com.everypicfound.common.cache.CacheService;
+import com.everypicfound.common.log.LogContext;
+import com.everypicfound.common.log.LogEventName;
+import com.everypicfound.common.log.LogService;
+import com.everypicfound.common.log.LogStatus;
 import com.everypicfound.vectorization.config.VectorCacheProperties;
 import com.everypicfound.vectorization.domain.query.QueryEmbedding;
 
@@ -28,7 +30,8 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class DefaultTextVectorCacheService implements TextVectorCacheService {
-    private static final Logger log = LoggerFactory.getLogger(DefaultTextVectorCacheService.class);
+
+    private final LogService logService;
 
     private static final String HASH_ALGORITHM = "SHA-256";
 
@@ -56,7 +59,7 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
             }
             return cachedEmbedding;
         } catch (RuntimeException e) {
-            log.warn("Text vector cache get failed.", e);
+            recordCacheFailure("get", e);
             return null;
         }
     }
@@ -77,7 +80,7 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
             String cacheKey = buildCacheKey(modelName, vectorDim, queryText);
             cacheService.put(cacheKey, embedding, getTextVectorCacheTtl());
         } catch (RuntimeException e) {
-            log.warn("Text vector cache put failed.", e);
+            recordCacheFailure("get", e);
         }
     }
 
@@ -93,7 +96,7 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
             String cacheKey = buildCacheKey(modelName, vectorDim, queryText);
             cacheService.evict(cacheKey);
         } catch (RuntimeException e) {
-            log.warn("Text vector cache evict failed.", e);
+            recordCacheFailure("get", e);
         }
     }
 
@@ -159,10 +162,39 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
             String value = Integer.toHexString(currentByte & 0xff);//把 本来存在复数的 byte 转成 0 到 255 的正整数。
             if (value.length() == 1) {
                 hex.append('0');
-            }//需要对单位数开头补零，确保转化为两位
+            } //需要对单位数开头补零，确保转化为两位
             hex.append(value);
         }
         return hex.toString();
+    }
+    
+     private void recordCacheFailure(
+        String operation,
+        RuntimeException exception
+    ) {
+        LogContext context = LogContext.builder()
+                    .module("search")
+                    .bizType("CACHE")
+                    .operation(operation)
+                    .eventName(LogEventName.SYSTEM_EXCEPTION_OCCURRED)
+                    .status(LogStatus.FAILED)
+                    .errorCode("SEARCH_RESULT_CACHE_FAILED")
+                    .message("search result cache operation failed")
+                    .build();
+
+        logService.recordError(context, exception);
+
+
+        logService.recordEvent(
+                LogContext.builder()
+                        .module("search")
+                        .bizType("CACHE")
+                        .operation(operation)
+                        .eventName(LogEventName.CACHE_DEGRADED)
+                        .status(LogStatus.DEGRADED)
+                        .errorCode("SEARCH_RESULT_CACHE_FAILED")
+                        .message("search continues without result cache")
+                        .build());
     }
 
 }

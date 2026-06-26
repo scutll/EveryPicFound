@@ -3,6 +3,7 @@ package com.everypicfound.vectorization.domain.query;
 import org.springframework.stereotype.Component;
 
 import com.everypicfound.common.exception.BizException;
+import com.everypicfound.common.exception.SystemException;
 import com.everypicfound.modelclient.api.ModelVectorizationClient;
 import com.everypicfound.modelclient.domain.TextVectorizeRequest;
 import com.everypicfound.modelclient.domain.VectorizeResult;
@@ -74,10 +75,10 @@ public class TextQueryVectorizer implements QueryVectorizer {
 
     private QueryEmbedding buildQueryEmbedding(SearchType searchType, VectorizeResult result) {
         if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
-            throw new BizException(SearchErrorCode.QUERY_VECTORIZATION_FAILED);
+            throw new SystemException(SearchErrorCode.QUERY_VECTORIZATION_FAILED);
         }
         if (result.getEmbedding() == null || result.getEmbedding().isEmpty()) {
-            throw new BizException(SearchErrorCode.QUERY_EMBEDDING_EMPTY);
+            throw new SystemException(SearchErrorCode.QUERY_EMBEDDING_EMPTY);
         }
 
         return QueryEmbedding.builder()

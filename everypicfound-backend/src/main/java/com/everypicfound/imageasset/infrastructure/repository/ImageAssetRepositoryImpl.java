@@ -261,7 +261,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
         command.setClearFailReason(true);
 
         return observeRepositoryOperation(
-                "update_vector_ready",
+                OPERATION_UPDATE_STATUS,
                 () -> doUpdateVectorStatus(command),
                 this::resolveUpdateResult);
 
@@ -277,7 +277,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
         command.setTargetStatus(VectorStatus.FAILED);
 
         return observeRepositoryOperation(
-                "update_vector_failed",
+                OPERATION_UPDATE_STATUS,
                 () -> doUpdateVectorStatus(command),
                 this::resolveUpdateResult);
     }
@@ -291,7 +291,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
         }
 
         return observeRepositoryOperation(
-                "increase_retry",
+                OPERATION_UPDATE_STATUS,
                 () -> {
                     LambdaUpdateWrapper<ImageAssetPO> wrapper = new LambdaUpdateWrapper<>();
                     wrapper.eq(ImageAssetPO::getId, imageId)

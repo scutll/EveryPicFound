@@ -403,7 +403,7 @@ public class SystemHealthCheckService {
          * DOWN -> UP。
          */
         if(healthy 
-                && !Boolean.TRUE.equals(previousHealthy)) {
+                && Boolean.FALSE.equals(previousHealthy)) {
                 recordComponentRecovered(outcome);
         }
 

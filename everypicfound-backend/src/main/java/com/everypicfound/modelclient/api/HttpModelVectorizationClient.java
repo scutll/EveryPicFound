@@ -231,7 +231,7 @@ public class HttpModelVectorizationClient implements ModelVectorizationClient {
     }
 
     private long elapsedMillis(long startNanos) {
-        return TimeUnit.NANOSECONDS.toMillis(System.currentTimeMillis() - startNanos);
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
     }
     
 

@@ -1,5 +1,7 @@
 package com.everypicfound.vectorization.application.processor;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -441,28 +443,33 @@ public class DefaultImageVectorizationProcessor
             VectorCollectionConfig collectionConfig,
             ImageVectorizationTaskCommand command) {
 
-        ImageVectorizeRequest request = ImageVectorizeRequest.builder()
-                .imageInputType(
-                        ImageInputType.MULTIPART)
-                .imageId(imageAsset.getId())
-                .storagePath(
-                        imageAsset.getStoragePath())
-                .inputStream(
-                        storageResource.getInputStream())
-                .originalFileName(
-                        imageAsset.getOriginalFileName())
-                .fileSize(
-                        storageResource.getFileSize())
-                .mimeType(
-                        storageResource.getMimeType())
-                .modelName(
-                        collectionConfig.getModelName())
-                .traceId(command.getTraceId())
-                .requestId(command.getRequestId())
-                .build();
-
-        return modelVectorizationClient.vectorizeImage(
-                request);
+        try (InputStream inputStream = storageResource.getInputStream()) {
+            ImageVectorizeRequest request = ImageVectorizeRequest.builder()
+                    .imageInputType(
+                            ImageInputType.MULTIPART)
+                    .imageId(imageAsset.getId())
+                    .storagePath(
+                            imageAsset.getStoragePath())
+                    .inputStream(
+                            inputStream)
+                    .originalFileName(
+                            imageAsset.getOriginalFileName())
+                    .fileSize(
+                            storageResource.getFileSize())
+                    .mimeType(
+                            storageResource.getMimeType())
+                    .modelName(
+                            collectionConfig.getModelName())
+                    .traceId(command.getTraceId())
+                    .requestId(command.getRequestId())
+                    .build();
+    
+            return modelVectorizationClient.vectorizeImage(
+                    request);
+            
+        } catch (IOException exception) {
+            throw new SystemException(StorageErrorCode.FILE_READ_FAILED, exception);
+        }
     }
 
     private VectorizeResult requireVectorizeSuccess(

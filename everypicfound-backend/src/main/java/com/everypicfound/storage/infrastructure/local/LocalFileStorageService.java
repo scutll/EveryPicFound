@@ -144,7 +144,9 @@ public class LocalFileStorageService implements FileStorageService {
         try {
             Path targetPath = resolveStoragePath(storagePath);//把相对路径转成真实本地路径，防止路径穿越攻击。
 
-            if(!Files.exists(targetPath)){
+            if (!Files.exists(targetPath)) {
+                result = RESULT_NOT_FOUND;
+
                 throw new SystemException(StorageErrorCode.FILE_NOT_FOUND);
             }
 

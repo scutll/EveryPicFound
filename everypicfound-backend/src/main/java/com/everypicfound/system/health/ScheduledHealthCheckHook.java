@@ -5,6 +5,10 @@ import org.springframework.stereotype.Component;
 
 import lombok.RequiredArgsConstructor;
 
+
+/**
+ * 系统定时健康检查任务。
+ */
 @Component
 @RequiredArgsConstructor
 public class ScheduledHealthCheckHook {
@@ -22,6 +26,6 @@ public class ScheduledHealthCheckHook {
             return;
         }
 
-        systemHealthCheckService.check(false);
+        systemHealthCheckService.check(false, HealthCheckSource.SCHEDULED);
     }
 }

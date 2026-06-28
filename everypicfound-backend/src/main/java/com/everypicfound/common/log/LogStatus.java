@@ -38,5 +38,10 @@ public enum LogStatus {
     /**
      * 业务资源已被标记为无效。
      */
-    INVALIDATED
+    INVALIDATED,
+                    
+    /**
+     * 依赖组件已经从异常状态恢复。
+     */
+    RECOVERED
 }

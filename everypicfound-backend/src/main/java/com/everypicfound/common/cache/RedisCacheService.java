@@ -8,7 +8,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
-import com.everypicfound.common.exception.CommonErrorCode;
+import com.everypicfound.common.cache.error.CacheErrorCode;
 import com.everypicfound.common.exception.SystemException;
 import com.everypicfound.common.metric.MetricName;
 import com.everypicfound.common.metric.MetricRecorder;
@@ -60,11 +60,11 @@ public class RedisCacheService implements CacheService {
             result = "deserialize_failed";
 
             removeCorruptedValue(key, exception);
-            throw new SystemException(CommonErrorCode.SYSTEM_ERROR, exception);
+            throw new SystemException(CacheErrorCode.CACHE_DESERIALIZE_FAILED, exception);
         } catch (DataAccessException exception) {
             result = "failed";
 
-            throw new SystemException(CommonErrorCode.SERVICE_UNAVAILABLE, exception);
+            throw new SystemException(CacheErrorCode.REDIS_ACCESS_FAILED, exception);
         } finally {
             recordRedisMetrics("get", result, startTime);
         }
@@ -105,11 +105,11 @@ public class RedisCacheService implements CacheService {
         } catch (JsonProcessingException exception) {
             result = "serialize_failed";
             
-            throw new SystemException(CommonErrorCode.SYSTEM_ERROR, exception);
+            throw new SystemException(CacheErrorCode.CACHE_SERIALIZE_FAILED, exception);
         } catch (DataAccessException exception) {
             result = "failed";
 
-            throw new SystemException(CommonErrorCode.SERVICE_UNAVAILABLE, exception);
+            throw new SystemException(CacheErrorCode.REDIS_ACCESS_FAILED, exception);
         } finally {
             recordRedisMetrics("put", result, startTime);
         }
@@ -128,7 +128,7 @@ public class RedisCacheService implements CacheService {
         } catch (DataAccessException exception) {
             result = "failed"; 
 
-            throw new SystemException(CommonErrorCode.SERVICE_UNAVAILABLE, exception);
+            throw new SystemException(CacheErrorCode.REDIS_ACCESS_FAILED, exception);
         } finally {
             recordRedisMetrics("evict", result, startTime);
         }
@@ -142,13 +142,13 @@ public class RedisCacheService implements CacheService {
         String result = "failed";
         try {
             Boolean exists = Boolean.TRUE.equals(redisTemplate.hasKey(key));
-            result = exists ? "present" : "absent";
+            result = Boolean.toString(exists);
             return exists;
         } catch (DataAccessException exception) {
             result = "failed";
 
             throw new SystemException(
-                    CommonErrorCode.SERVICE_UNAVAILABLE,
+                    CacheErrorCode.REDIS_ACCESS_FAILED,
                     exception);
         } finally {
             recordRedisMetrics("exists", result, startTime);
@@ -166,7 +166,7 @@ public class RedisCacheService implements CacheService {
                 : ttl;
 
         if (actualTtl.isZero() || actualTtl.isNegative()) {
-            throw new IllegalArgumentException("cache ttl must be positive");
+            throw new SystemException(CacheErrorCode.CACHE_TTL_INVALID);
         }
 
         return actualTtl;

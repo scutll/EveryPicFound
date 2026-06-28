@@ -22,7 +22,9 @@ public enum ImageAssetErrorCode implements ErrorCode{
 
     IMAGE_METADATA_SAVE_FAILED(200007, "image metadata saving failed"),
 
-    ORPHAN_FILE_DELETE_FAILED(200008, "orphan image deleting failed");
+    ORPHAN_FILE_DELETE_FAILED(200008, "orphan image deleting failed"),
+                    
+    IMAGE_STREAM_FAILED(200009, "image stream failed");
 
     private final Integer code;
 

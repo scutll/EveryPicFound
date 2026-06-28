@@ -37,8 +37,9 @@ public class LocalFileStorageService implements FileStorageService {
 
     private static final String RESULT_SUCCESS = "success";
     private static final String RESULT_FAILED = "failed";
-    private static final String RESULT_PRESENT = "present";
-    private static final String RESULT_ABSENT = "absent";
+    private static final String RESULT_NOT_FOUND = "not_found";
+    private static final String RESULT_TRUE = "true";
+    private static final String RESULT_FALSE = "false";
 
     private final StorageProperties storageProperties;
     // 本地存储配置对象，提供 basePath、accessUrlPrefix 等存储相关配置。
@@ -104,7 +105,7 @@ public class LocalFileStorageService implements FileStorageService {
 
 
             if (!deleted) {
-                result = RESULT_FAILED;
+                result = RESULT_NOT_FOUND;
                 return false;
             }
 
@@ -182,7 +183,7 @@ public class LocalFileStorageService implements FileStorageService {
             Path targetPath = resolveStoragePath(storagePath);//把相对路径转成真实本地路径，防止路径穿越攻击。
             boolean exists = Files.exists(targetPath);
 
-            result = exists? RESULT_PRESENT:RESULT_ABSENT;
+            result = exists? RESULT_TRUE:RESULT_FALSE;
             
             return exists;
         } finally {

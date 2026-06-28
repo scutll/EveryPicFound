@@ -88,7 +88,7 @@ public class DefaultSearchPipeline implements SearchPipeline {
     private static final String EMBEDDING_REASON_EMPTY = "empty";
     private static final String EMBEDDING_REASON_DIMENSION_MISMATCH = "dimension_mismatch";
 
-    //Services
+    // Services
 
     private final MetricRecorder metricRecorder;
 
@@ -115,15 +115,16 @@ public class DefaultSearchPipeline implements SearchPipeline {
     private final SearchProperties searchProperties;
 
     /*
-    流程改为：
-    validateCommand
-    resolveCollection
-    resolveTopK
-    查搜索结果缓存
-    缓存命中：直接返回
-    缓存未命中：继续向量化和搜索
-    搜索完成：写入缓存
-    返回结果 */
+     * 流程改为：
+     * validateCommand
+     * resolveCollection
+     * resolveTopK
+     * 查搜索结果缓存
+     * 缓存命中：直接返回
+     * 缓存未命中：继续向量化和搜索
+     * 搜索完成：写入缓存
+     * 返回结果
+     */
     @Override
     public SearchResponse execute(SearchCommand command) {
 
@@ -135,15 +136,14 @@ public class DefaultSearchPipeline implements SearchPipeline {
          * validate 阶段同时完成业务参数校验和 topK 解析。
          */
 
-        Integer topK = observeStage(searchType, STAGE_VALIDATE, ()->{
+        Integer topK = observeStage(searchType, STAGE_VALIDATE, () -> {
             validateCommand(command);
             return resolveTopK(command);
         });
 
-
         SearchCollectionContext collectionContext = observeStage(searchType, STAGE_RESOLVE_COLLECTION,
                 searchCollectionResolver::resolve);
-        
+
         SearchResponse cachedResponse = observeCacheGet(searchType, command, collectionContext, topK);
 
         if (cachedResponse != null) {
@@ -265,7 +265,6 @@ public class DefaultSearchPipeline implements SearchPipeline {
         return response;
     }
 
-
     private void validateCommand(SearchCommand command) {
         SearchValidateResult result = searchValidatorManager.validate(command);
 
@@ -292,7 +291,7 @@ public class DefaultSearchPipeline implements SearchPipeline {
 
         QueryEmbedding queryEmbedding = queryVectorizer.vectorize(request);
         if (queryEmbedding == null) {
-            throw new BizException(SearchErrorCode.QUERY_VECTORIZATION_FAILED);
+            throw new SystemException(SearchErrorCode.QUERY_VECTORIZATION_FAILED);
         }
 
         return queryEmbedding;
@@ -306,7 +305,7 @@ public class DefaultSearchPipeline implements SearchPipeline {
                 || queryEmbedding.getDim() == null) {
 
             recordEmbeddingInvalid(searchType, EMBEDDING_REASON_EMPTY);
-            throw new BizException(SearchErrorCode.QUERY_EMBEDDING_EMPTY);
+            throw new SystemException(SearchErrorCode.QUERY_EMBEDDING_EMPTY);
         }
 
         if (collectionContext == null
@@ -314,10 +313,10 @@ public class DefaultSearchPipeline implements SearchPipeline {
                 || !collectionContext.getVectorDim().equals(queryEmbedding.getDim())) {
 
             recordEmbeddingInvalid(searchType, EMBEDDING_REASON_DIMENSION_MISMATCH);
-            throw new BizException(SearchErrorCode.QUERY_VECTOR_DIM_MISMATCH);
+            throw new SystemException(SearchErrorCode.QUERY_VECTOR_DIM_MISMATCH);
         }
     }
-    
+
     private void recordEmbeddingInvalid(
             SearchType searchType,
             String reason) {
@@ -366,14 +365,15 @@ public class DefaultSearchPipeline implements SearchPipeline {
                         .topN(topN)
                         .build());
 
-        if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
+        if (result == null){    
             throw new SystemException(SearchErrorCode.VECTOR_SEARCH_FAILED);
         }
 
-        if (!Boolean.TRUE.equals(result.getSuccess())) {
+        if(!Boolean.TRUE.equals(result.getSuccess()))
+        {
             ErrorCode errorCode = result.getErrorCode();
 
-            throw new SystemException(errorCode == null? SearchErrorCode.VECTOR_SEARCH_FAILED : errorCode);
+            throw new SystemException(errorCode == null ? SearchErrorCode.VECTOR_SEARCH_FAILED : errorCode);
         }
 
         return result;
@@ -498,7 +498,7 @@ public class DefaultSearchPipeline implements SearchPipeline {
         return searchFilterResult.getInvalidImageCount();
     }
 
-    //数量Value类型指标记录方法
+    // 数量Value类型指标记录方法
     private void recordSearchTopN(
             SearchType searchType,
             Integer topN) {
@@ -593,13 +593,11 @@ public class DefaultSearchPipeline implements SearchPipeline {
         return result.getItems().size();
     }
 
-    
-    //方法调用wrapper，pipeline上调用方法并记录指标
+    // 方法调用wrapper，pipeline上调用方法并记录指标
     private <T> T observeStage(
             SearchType searchType,
             String stage,
-            Supplier<T> action
-    ) {
+            Supplier<T> action) {
         long startNanos = System.nanoTime();
         String result = RESULT_FAILED;
 
@@ -614,7 +612,7 @@ public class DefaultSearchPipeline implements SearchPipeline {
             recordStageMetrics(searchType, stage, result, startNanos);
         }
     }
-    
+
     private void recordStageMetrics(
             SearchType searchType,
             String stage,
@@ -653,16 +651,16 @@ public class DefaultSearchPipeline implements SearchPipeline {
                 System.nanoTime() - startNanos);
     }
 
-
-
     /*
-    * SearchResultService(Cache调用的Wrapper) 在get、put等方法上并不抛出异常，而是在异常/无缓存记录的时候统一返回null，并且错误信息在ThreadLocal中记录(SearchObservationContext) 因此需要在结果null时候调取Context查看具体错误信息并抛出/处理
-    */
+     * SearchResultService(Cache调用的Wrapper)
+     * 在get、put等方法上并不抛出异常，而是在异常/无缓存记录的时候统一返回null，并且错误信息在ThreadLocal中记录(
+     * SearchObservationContext) 因此需要在结果null时候调取Context查看具体错误信息并抛出/处理
+     */
 
     private SearchResponse observeCacheGet(
-        SearchType searchType,
-        SearchCommand command,
-        SearchCollectionContext collectionContext,
+            SearchType searchType,
+            SearchCommand command,
+            SearchCollectionContext collectionContext,
             Integer topK) {
 
         long startNanos = System.nanoTime();
@@ -682,7 +680,6 @@ public class DefaultSearchPipeline implements SearchPipeline {
         }
     }
 
-    
     private void observeCachePut(
             SearchType searchType,
             SearchCommand command,

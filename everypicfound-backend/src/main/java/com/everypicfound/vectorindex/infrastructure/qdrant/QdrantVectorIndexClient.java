@@ -137,7 +137,10 @@ public class QdrantVectorIndexClient implements VectorIndexClient {
             List<RetrievedPoint> points = qdrantClient
                     .retrieveAsync(request.getCollectionName(), id(request.getVectorId()), null).get();
 
-            result = RESULT_SUCCESS;
+            boolean exists = points != null && !points.isEmpty();
+
+            result = Boolean.toString(exists);
+            
             return VectorOperationResult.builder()
                     .success(true)
                     .vectorId(request.getVectorId())

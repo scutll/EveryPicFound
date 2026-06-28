@@ -19,6 +19,7 @@ public class DefaultVectorizationRetryPolicy implements VectorizationRetryPolicy
             FailReason.IMAGE_DECODE_ERROR,
             FailReason.MODEL_SERVICE_TIMEOUT,
             FailReason.MODEL_SERVICE_ERROR,
+            FailReason.TEMPORARY_STORAGE_ERROR,
             FailReason.VECTOR_DB_UPSERT_FAILED,
             FailReason.READY_UPDATE_FAILED,
             FailReason.PROCESSING_TIMEOUT

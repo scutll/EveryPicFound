@@ -39,11 +39,12 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
     private static final String RESULT_SUCCESS = "success";
     private static final String RESULT_FAILED = "failed";
     private static final String RESULT_DUPLICATE = "duplicate";
+    private static final String RESULT_FOUND = "found";
     private static final String RESULT_NOT_FOUND = "not_found";
-    private static final String RESULT_NOT_UPDATED = "not_updated";
-    private static final String RESULT_PRESENT = "present";
-    private static final String RESULT_ABSENT = "absent";
+    private static final String RESULT_CONFLICT = "conflict";
     private static final String RESULT_SKIPPED = "skipped";
+
+    private static final String OPERATION_UPDATE_STATUS = "update_status";
 
     private final ImageAssetMapper imageAssetMapper;
 
@@ -56,7 +57,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
                     ImageAssetPO po = toPO(command);
                     return imageAssetMapper.insert(po) > 0;
                 },
-                saved -> Boolean.TRUE.equals(saved) ? RESULT_SUCCESS : RESULT_NOT_UPDATED);
+                saved -> Boolean.TRUE.equals(saved) ? RESULT_SUCCESS : RESULT_FAILED);
     }
 
     @Override
@@ -117,7 +118,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
 
                     return count != null && count > 0L;
                 },
-                exists -> Boolean.TRUE.equals(exists) ? RESULT_PRESENT : RESULT_ABSENT);
+                exists -> Boolean.TRUE.equals(exists) ? RESULT_FOUND : RESULT_NOT_FOUND);
 
     }
 
@@ -167,13 +168,13 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
     @Override
     public boolean updateImageStatus(ImageStatusUpdateCommand command) {
         if (command == null || command.getImageId() == null || command.getTargetStatus() == null) {
-            recordSkippedRepositoryOperation("update_image_status");
+            recordSkippedRepositoryOperation(OPERATION_UPDATE_STATUS);
             return false;
         }
 
-        return observeRepositoryOperation("update_image_status",
+        return observeRepositoryOperation(OPERATION_UPDATE_STATUS,
                 () -> doUpdateImageStatus(command),
-                updated -> Boolean.TRUE.equals(updated) ? RESULT_SUCCESS : RESULT_NOT_UPDATED);
+                this::resolveUpdateResult);
 
     }
 
@@ -201,13 +202,14 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
     @Override
     public boolean updateVectorStatus(VectorStatusUpdateCommand command) {
         if (command == null || command.getImageId() == null || command.getTargetStatus() == null) {
-            recordSkippedRepositoryOperation("update_vector_status");
+            recordSkippedRepositoryOperation(OPERATION_UPDATE_STATUS);
             return false;
         }
 
-        return observeRepositoryOperation("update_vector_status",
+        return observeRepositoryOperation(
+                OPERATION_UPDATE_STATUS,
                 () -> doUpdateVectorStatus(command),
-                updated -> Boolean.TRUE.equals(updated) ? RESULT_SUCCESS : RESULT_NOT_UPDATED);
+                this::resolveUpdateResult);
 
     }
 
@@ -249,7 +251,7 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
     @Override
     public boolean updateVectorReady(VectorStatusUpdateCommand command) {
         if (command == null) {
-            recordSkippedRepositoryOperation("update_vector_ready");
+            recordSkippedRepositoryOperation(OPERATION_UPDATE_STATUS);
             return false;
         }
 
@@ -261,14 +263,14 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
         return observeRepositoryOperation(
                 "update_vector_ready",
                 () -> doUpdateVectorStatus(command),
-                updated -> Boolean.TRUE.equals(updated) ? RESULT_SUCCESS : RESULT_NOT_UPDATED);
+                this::resolveUpdateResult);
 
     }
 
     @Override
     public boolean updateVectorFailed(VectorStatusUpdateCommand command) {
         if (command == null) {
-            recordSkippedRepositoryOperation("update_vector_failed");
+            recordSkippedRepositoryOperation(OPERATION_UPDATE_STATUS);
             return false;
         }
 
@@ -277,30 +279,30 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
         return observeRepositoryOperation(
                 "update_vector_failed",
                 () -> doUpdateVectorStatus(command),
-                updated -> Boolean.TRUE.equals(updated) ? RESULT_SUCCESS : RESULT_NOT_UPDATED);
+                this::resolveUpdateResult);
     }
 
     // 累加型字段retry_count使用原子自增，防止并发丢失更新
     @Override
     public boolean increaseRetryCount(Long imageId) {
         if (imageId == null) {
-            recordSkippedRepositoryOperation("increase_retry");
+            recordSkippedRepositoryOperation(OPERATION_UPDATE_STATUS);
             return false;
         }
 
         return observeRepositoryOperation(
-            "increase_retry",
-                     ()->{
-                         LambdaUpdateWrapper<ImageAssetPO> wrapper = new LambdaUpdateWrapper<>();
-                         wrapper.eq(ImageAssetPO::getId, imageId)
-                                 .setSql("retry_count = COALESCE(retry_count, 0) + 1")
-                                 .setSql("version = version + 1")
-                                 .set(ImageAssetPO::getUpdatedTime, LocalDateTime.now());
-                 
-                         return imageAssetMapper.update(null, wrapper) > 0;
+                "increase_retry",
+                () -> {
+                    LambdaUpdateWrapper<ImageAssetPO> wrapper = new LambdaUpdateWrapper<>();
+                    wrapper.eq(ImageAssetPO::getId, imageId)
+                            .setSql("retry_count = COALESCE(retry_count, 0) + 1")
+                            .setSql("version = version + 1")
+                            .set(ImageAssetPO::getUpdatedTime, LocalDateTime.now());
 
-                     }, 
-                    updated -> Boolean.TRUE.equals(updated) ? RESULT_SUCCESS : RESULT_NOT_UPDATED)
+                    return imageAssetMapper.update(null, wrapper) > 0;
+
+                },
+                this::resolveUpdateResult);
 
     }
 
@@ -466,6 +468,15 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
                 MetricName.IMAGE_ASSET_REPOSITORY_DURATION,
                 System.currentTimeMillis() - startTime,
                 tags);
+    }
+
+    // conflict 表示状态条件或乐观锁条件没有命中
+    private String resolveUpdateResult(
+            Boolean updated) {
+
+        return Boolean.TRUE.equals(updated)
+                ? RESULT_SUCCESS
+                : RESULT_CONFLICT;
     }
 
 }

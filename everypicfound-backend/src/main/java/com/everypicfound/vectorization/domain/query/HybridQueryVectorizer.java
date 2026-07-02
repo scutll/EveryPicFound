@@ -36,6 +36,8 @@ public class HybridQueryVectorizer implements QueryVectorizer{
         if (request == null) {
             throw new BizException(SearchErrorCode.SEARCH_PARAM_INVALID);
         }
+
+
         QueryEmbedding imageEmbedding = imageQueryVectorizer.vectorize(request);
         QueryEmbedding textEmbedding = textQueryVectorizer.vectorize(request);
 

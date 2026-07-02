@@ -1,16 +1,11 @@
 package com.everypicfound.vectorization.domain.cache;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.ibatis.builder.ResultMapResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import com.everypicfound.common.cache.CacheKeyBuilder;
 import com.everypicfound.common.cache.CacheService;
 import com.everypicfound.common.log.LogContext;
 import com.everypicfound.common.log.LogEventName;
@@ -26,18 +21,27 @@ import com.everypicfound.vectorization.domain.query.QueryEmbedding;
 import lombok.RequiredArgsConstructor;
 
 /*
-1. 判断文本向量缓存是否开启:get 命中后检查 cachedEmbedding.dim == vectorDim, put 前检查 embedding.dim == vectorDim
-2. 生成文本向量缓存 key
-3. 从 CacheService 读取 QueryEmbedding
-4. 把 QueryEmbedding 写入缓存
-5. 删除某个文本向量缓存
-*/
+ * 查询向量缓存通用实现：
+ *
+ * 1. 判断查询向量缓存是否开启；
+ * 2. 根据调用方传入的完整 Key 读取 QueryEmbedding；
+ * 3. 校验缓存向量维度及实际向量长度；
+ * 4. 写入或删除查询向量缓存；
+ * 5. 缓存异常时记录日志并降级，不影响向量化主流程。
+ */
 
 @Service
 @RequiredArgsConstructor
-public class DefaultTextVectorCacheService implements TextVectorCacheService {
+public class DefaultQueryVectorCacheService implements QueryVectorCacheService {
 
-    private static final String CACHE_NAME = "text_vector";
+    /**
+     * 逻辑缓存名称。
+     *
+     * 与底层 Redis 指标区分：
+     * - query_vector：查询向量缓存的业务指标；
+     * - redis：底层缓存组件的访问指标。
+     */
+    private static final String CACHE_NAME = "query_vector";
 
     private static final String OPERATION_GET = "get";
     private static final String OPERATION_PUT = "put";
@@ -49,45 +53,45 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
     private static final String RESULT_SUCCESS = "success";
     private static final String RESULT_ERROR = "error";
     private static final String RESULT_SKIPPED = "skipped";
-
+    
+    private static final String ERROR_CODE = "QUERY_VECTOR_CACHE_FAILED";
+    
     private final LogService logService;
 
-    private static final String HASH_ALGORITHM = "SHA-256";
-
-    private static final long DEFAULT_TEXT_VECTOR_CACHE_TTL_SECONDS = 3600L;
+    private static final long DEFAULT_QUERY_VECTOR_CACHE_TTL_SECONDS = 3600L;
 
     private final CacheService cacheService;
-
-    private final CacheKeyBuilder cacheKeyBuilder;
 
     private final VectorCacheProperties vectorCacheProperties;
 
     private final MetricRecorder metricRecorder;
 
     @Override
-    public QueryEmbedding get(String modelName,
-            Integer vectorDim,
-            String queryText) {
+    public QueryEmbedding get(
+            String key,
+            Integer vectorDim) {
         long startNanos = System.nanoTime();
         String result = RESULT_SKIPPED;
 
         try {
 
-            if (!isCacheableTextVector(modelName, vectorDim, queryText)) {
+            if (!isCacheable(key, vectorDim)) {
                 return null;
             }
 
-            String cacheKey = buildCacheKey(modelName, vectorDim, queryText);
-            QueryEmbedding cachedEmbedding = cacheService.get(cacheKey, QueryEmbedding.class);
+            QueryEmbedding cachedEmbedding = cacheService.get(key, QueryEmbedding.class);
             if (cachedEmbedding == null) {
                 result = RESULT_MISS;
                 return null;
             }
 
-            if (!isValidCachedEmbedding(cachedEmbedding, vectorDim)) {
+            if (!isValidEmbedding(cachedEmbedding, vectorDim)) {
                 result = RESULT_INVALID;
-                // 非法缓存值不继续使用，并尝试清理
-                evictInvalidCacheValue(cacheKey);
+                /*
+                 * 缓存值已经存在，但内容不符合当前查询要求。
+                 * 不能继续使用，并尝试清除损坏或过期的数据。
+                 */
+                evictInvalidCacheValue(key);
                 return null;
             }
 
@@ -103,111 +107,139 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
     }
 
     @Override
-    public void put(String modelName,
+    public void put(
+            String key,
             Integer vectorDim,
-            String queryText,
             QueryEmbedding embedding) {
+
         long startNanos = System.nanoTime();
         String result = RESULT_SKIPPED;
 
         try {
-            if (!isCacheableTextVector(modelName, vectorDim, queryText)) {
-                return;
-            }
-            if (!isValidCachedEmbedding(embedding, vectorDim)) {
+            if (!isCacheable(
+                    key,
+                    vectorDim)) {
+
                 return;
             }
 
-            String cacheKey = buildCacheKey(modelName, vectorDim, queryText);
-            cacheService.put(cacheKey, embedding, getTextVectorCacheTtl());
+            if (!isValidEmbedding(
+                    embedding,
+                    vectorDim)) {
+
+                result = RESULT_INVALID;
+                return;
+            }
+
+            cacheService.put(
+                    key,
+                    embedding,
+                    getQueryVectorCacheTtl());
+
             result = RESULT_SUCCESS;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException exception) {
+            /*
+             * 写缓存失败不能影响本次已经完成的向量化结果。
+             */
             result = RESULT_ERROR;
-            recordCacheFailure(OPERATION_PUT, e);
+
+            recordCacheFailure(
+                    OPERATION_PUT,
+                    exception);
         } finally {
-            recordCacheMetrics(OPERATION_PUT, result, startNanos);
+            recordCacheMetrics(
+                    OPERATION_PUT,
+                    result,
+                    startNanos);
         }
     }
 
     @Override
-    public void evict(String modelName,
-            Integer vectorDim,
-            String queryText) {
+    public void evict(
+            String key) {
+
         long startNanos = System.nanoTime();
         String result = RESULT_SKIPPED;
-        
+
         try {
-            if (!isValidTextVectorKey(modelName, vectorDim, queryText)) {
+            /*
+             * evict 不依赖 vectorDim，因为删除只需要准确的 Key。
+             *
+             * 这里也不判断业务缓存开关，使显式清理操作在缓存策略关闭时
+             * 仍可尝试清除以前遗留的数据。
+             */
+            if (!isValidCacheIdentity(
+                    key)) {
+
                 return;
             }
 
-            String cacheKey = buildCacheKey(modelName, vectorDim, queryText);
-            cacheService.evict(cacheKey);
+            cacheService.evict(key);
             result = RESULT_SUCCESS;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException exception) {
             result = RESULT_ERROR;
-            recordCacheFailure(OPERATION_EVICT, e);
+
+            recordCacheFailure(
+                    OPERATION_EVICT,
+                    exception);
         } finally {
-            recordCacheMetrics(OPERATION_EVICT, result, startNanos);
+            recordCacheMetrics(
+                    OPERATION_EVICT,
+                    result,
+                    startNanos);
         }
     }
 
-    private boolean isCacheableTextVector(String modelName,
-            Integer vectorDim,
-            String queryText) {
+    private boolean isCacheable(
+            String key,
+            Integer vectorDim) {
         return Boolean.TRUE.equals(cacheService.isEnabled())
                 && Boolean.TRUE.equals(vectorCacheProperties.getEnabled())
-                && isValidTextVectorKey(modelName, vectorDim, queryText);
-    }
-
-    private boolean isValidTextVectorKey(String modelName,
-            Integer vectorDim,
-            String queryText) {
-        return StringUtils.hasText(modelName)
+                && isValidCacheIdentity(key)
                 && vectorDim != null
-                && vectorDim > 0
-                && StringUtils.hasText(queryText);
+                && vectorDim > 0;
+    }
+    
+
+    /**
+     * 校验定位缓存所需的基本信息。
+     */
+    private boolean isValidCacheIdentity(
+            String key) {
+        return StringUtils.hasText(key);
     }
 
-    private boolean isValidCachedEmbedding(QueryEmbedding embedding, Integer vectorDim) {
+
+    /**
+     * 校验查询向量缓存值。
+     *
+     * 除了校验 dim 元数据，还需要校验实际向量长度，
+     * 防止出现 dim=512、实际只有 500 个元素的损坏数据。
+     */
+    private boolean isValidEmbedding(QueryEmbedding embedding, Integer vectorDim) {
         return embedding != null
                 && embedding.getEmbedding() != null
                 && !embedding.getEmbedding().isEmpty()
                 && embedding.getDim() != null
-                && embedding.getDim().equals(vectorDim);
+                && embedding.getDim().equals(vectorDim)
+                && embedding.getEmbedding().size() == vectorDim
+                && StringUtils.hasText(
+                        embedding.getModelName());
     }
 
-    private String buildCacheKey(String modelName,
-            Integer vectorDim,
-            String queryText) {
-        String rawKey = String.join(":",
-                modelName,
-                String.valueOf(vectorDim),
-                hashText(queryText));
-
-        return cacheKeyBuilder.buildVectorKey(rawKey);
-    }
-
-    private Duration getTextVectorCacheTtl() {
+    private Duration getQueryVectorCacheTtl() {
         Long ttlSeconds = vectorCacheProperties.getTextVectorTtlSeconds();
         if (ttlSeconds == null || ttlSeconds <= 0) {
-            return Duration.ofSeconds(DEFAULT_TEXT_VECTOR_CACHE_TTL_SECONDS);
+            return Duration.ofSeconds(DEFAULT_QUERY_VECTOR_CACHE_TTL_SECONDS);
         }
         return Duration.ofSeconds(ttlSeconds);
     }
 
-    private String hashText(String text) {
-        String normalizedText = text.trim();
-
-        try {
-            MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
-            byte[] hashBytes = digest.digest(normalizedText.getBytes(StandardCharsets.UTF_8));
-            return toHex(hashBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(HASH_ALGORITHM + " algorithm is not available", e);
-        }
-    }
-
+    /**
+     * 清理非法缓存。
+     *
+     * 清理失败只记录日志和指标，仍按照缓存未命中处理。
+     */
     private void evictInvalidCacheValue(
             String cacheKey) {
 
@@ -229,21 +261,12 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
         }
     }
 
-    private String toHex(byte[] bytes) {
-        StringBuilder hex = new StringBuilder(bytes.length * 2);// 1 byte 转化为 16 进制为 2 位，长度翻倍
-        for (byte currentByte : bytes) {
-            String value = Integer.toHexString(currentByte & 0xff);// 把 本来存在复数的 byte 转成 0 到 255 的正整数。
-            if (value.length() == 1) {
-                hex.append('0');
-            } // 需要对单位数开头补零，确保转化为两位
-            hex.append(value);
-        }
-        return hex.toString();
-    }
 
     private void recordCacheFailure(
             String operation,
             RuntimeException exception) {
+
+
 
         LogContext errorContext = LogContext.builder()
                 .module("vectorization")
@@ -252,9 +275,9 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
                 .eventName(
                         LogEventName.SYSTEM_EXCEPTION_OCCURRED)
                 .status(LogStatus.FAILED)
-                .errorCode("TEXT_VECTOR_CACHE_FAILED")
+                .errorCode(ERROR_CODE)
                 .message(
-                        "text vector cache operation failed")
+                    "query vector cache operation failed")
                 .build();
 
         logService.recordError(
@@ -270,9 +293,9 @@ public class DefaultTextVectorCacheService implements TextVectorCacheService {
                                 LogEventName.CACHE_DEGRADED)
                         .status(LogStatus.DEGRADED)
                         .errorCode(
-                                "TEXT_VECTOR_CACHE_FAILED")
+                                ERROR_CODE)
                         .message(
-                                "vectorization continues without text vector cache")
+                                "vectorization continues without query vector cache")
                         .build());
     }
 

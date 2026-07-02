@@ -41,23 +41,15 @@ public class ImageFileTestApplication {
     public LogService logService() {
         return new LogService() {
             @Override
-            public void recordBizLog(LogContext context) {
+            public void recordError(LogContext context, Throwable throwable) {
             }
 
             @Override
-            public void recordSuccessLog(LogContext context) {
+            public void recordError(LogContext context) {
             }
 
             @Override
-            public void recordErrorLog(LogContext context) {
-            }
-
-            @Override
-            public void recordStateChangeLog(LogContext context) {
-            }
-
-            @Override
-            public void recordSlowLog(LogContext context) {
+            public void recordEvent(LogContext context) {
             }
         };
     }
@@ -65,17 +57,27 @@ public class ImageFileTestApplication {
     @Bean
     public MetricRecorder metricRecorder() {
         return new MetricRecorder() {
+
             @Override
             public void increment(MetricName metricName, MetricTags tags) {
+
+            }
+
+            @Override
+            public void increment(MetricName metricName, double amount, MetricTags tags) {
+
             }
 
             @Override
             public void recordTimer(MetricName metricName, Long costMs, MetricTags tags) {
+
             }
 
             @Override
             public void recordValue(MetricName metricName, Number value, MetricTags tags) {
+
             }
         };
+
     }
 }

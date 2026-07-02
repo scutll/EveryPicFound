@@ -2,7 +2,7 @@ package com.everypicfound.search.domain.collection;
 
 import org.springframework.stereotype.Component;
 
-import com.everypicfound.common.exception.BizException;
+import com.everypicfound.common.exception.SystemException;
 import com.everypicfound.search.error.SearchErrorCode;
 import com.everypicfound.vectorindex.collection.ActiveCollectionResolver;
 import com.everypicfound.vectorindex.collection.VectorCollectionConfig;
@@ -38,7 +38,7 @@ public class DefaultSearchCollectionResolver implements SearchCollectionResolver
                 || config.getVectorDim() <= 0
                 || isBlank(config.getVectorVersion())
                 || config.getDistanceMetric() == null) {
-            throw new BizException(SearchErrorCode.SEARCH_COLLECTION_UNAVAILABLE);
+            throw new SystemException(SearchErrorCode.SEARCH_COLLECTION_UNAVAILABLE);
         }
     }
     

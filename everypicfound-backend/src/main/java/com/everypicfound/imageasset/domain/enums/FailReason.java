@@ -4,6 +4,15 @@ public enum FailReason {
 
     // 图片文件不存在。
     FILE_NOT_FOUND,
+            
+    /**
+     * Storage 临时不可用或文件读取失败，
+     * 可以进入重试流程。
+     */
+    TEMPORARY_STORAGE_ERROR,
+                            
+    //路径无效
+    STORAGE_PATH_INVALID,
 
     // 图片解码失败。
     IMAGE_DECODE_ERROR,

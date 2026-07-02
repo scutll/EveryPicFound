@@ -19,11 +19,13 @@ import java.io.IOException;
 
 /**
  * HTTP 请求上下文初始化过滤器。
- *
- * <p>该过滤器在每个请求进入 Controller 前初始化 RequestContext，
- * 并把 requestId、traceId 写入 MDC，便于后续日志统一携带链路字段。</p>
+ * Spring自动扫描并注册到Web过滤链中
+ * <p>该过滤器在每个请求进入 Controller 前初始化 RequestContext和MDC，
+ * 并把 requestId、traceId 写入 MDC，便于后续日志统一携带链路字段。
+ * 请求后进行清理
+ * </p>
  */
-@Component("everypicfoundRequestContextFilter")//修改1
+@Component("everypicfoundRequestContextFilter")
 @Order(Ordered.HIGHEST_PRECEDENCE)// 最高优先级：因为拦截器会拦截所有请求，所以需要最高优先级
 @RequiredArgsConstructor
 public class RequestContextFilter extends OncePerRequestFilter{
@@ -42,35 +44,61 @@ public class RequestContextFilter extends OncePerRequestFilter{
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
-        String requestId = getOrGenerateRequestId(request.getHeader(HEADER_REQUEST_ID));
-        String traceId = getOrGenerateTraceId(request.getHeader(HEADER_TRACE_ID));
-        // 请求进入系统时：初始化上下文
-        RequestContext requestContext = RequestContext.builder()
-                .requestId(requestId)
-                .traceId(traceId)
-                .module(DEFAULT_MODULE)
-                .operation(DEFAULT_OPERATION)
-                .build();
+            FilterChain filterChain) throws ServletException, IOException {
 
-                try{
-                     // 放行请求，让 Controller 继续执行
-                    RequestContextHolder.set(requestContext);//设置请求上下文
-                    MDC.put(MDC_REQUEST_ID, requestId);//设置MDC的requestId
-                    MDC.put(MDC_TRACE_ID, traceId);//设置MDC的traceId
+        /*
+         * Servlet 工作线程会被线程池复用。
+         * 进入新请求时先主动清理，防止上一次请求异常退出后留下脏数据。
+         */
+        clearContext();
 
-                    response.setHeader(HEADER_REQUEST_ID, requestId);//设置响应头requestId
-                    response.setHeader(HEADER_TRACE_ID, traceId);//设置响应头traceId
+        try{
+            String requestId = getOrGenerateRequestId(request.getHeader(HEADER_REQUEST_ID));
+            String traceId = getOrGenerateTraceId(request.getHeader(HEADER_TRACE_ID));
 
-                    filterChain.doFilter(request, response);//执行下一个过滤器
-                }finally{
-                    // 请求结束时：清理上下文
-                    RequestContextHolder.clear();//清除请求上下文
-                    MDC.remove(MDC_REQUEST_ID);//清除MDC的requestId
-                    MDC.remove(MDC_TRACE_ID);//清除MDC的traceId
-                }
+            // 请求进入系统时：初始化上下文
+            RequestContext requestContext = RequestContext.builder()
+                    .requestId(requestId)
+                    .traceId(traceId)
+                    .module(DEFAULT_MODULE)
+                    .operation(DEFAULT_OPERATION)
+                    .build();
 
-            }
+            bindContext(requestContext);
+
+            response.setHeader(HEADER_REQUEST_ID, requestId);
+            response.setHeader(HEADER_TRACE_ID, traceId);
+
+            filterChain.doFilter(request, response);
+
+        } finally {
+            clearContext();
+        }
+
+        
+
+    }
+
+    private void bindContext(RequestContext requestContext) {
+        RequestContextHolder.set(requestContext);
+
+        putMdcValue(MDC_REQUEST_ID, requestContext.getRequestId());
+        putMdcValue(MDC_TRACE_ID, requestContext.getTraceId());
+    }
+
+    private void putMdcValue(String key, String value) {
+        if (StringUtils.hasText(value)) {
+            MDC.put(key, value);
+        } else {
+            MDC.remove(key);
+        }
+    }
+
+            
+    private void clearContext() {
+        RequestContextHolder.clear();
+        MDC.clear();
+    }
 
     private String getOrGenerateRequestId(String headerValue) {
         if (StringUtils.hasText(headerValue)) {

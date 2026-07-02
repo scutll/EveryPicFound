@@ -164,3 +164,11 @@ cd everypicfound-bcakend
 mvn clean compile
 mvn spring-boot:run
 ```
+### 前端套件启动
+- 先确保已经下载node
+```bash
+cd everypicfound-frontend
+mvn install
+mvn run dev
+```
+

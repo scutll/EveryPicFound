@@ -5,8 +5,16 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+
+/**
+ * 结构化日志上下文。
+ *
+ * <p>
+ * Throwable 不放入该对象，由 LogService.recordError 的独立参数传入。
+ * </p>
+ */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class LogContext {
@@ -30,10 +38,10 @@ public class LogContext {
     private String operation;
 
     // 当前日志事件名，例如 FILE_SAVE_SUCCESS、UPLOAD_FAILED。
-    private String eventName;
+    private LogEventName eventName;
 
     // 当前节点状态，例如 START、SUCCESS、FAILED、SKIPPED。
-    private String status;
+    private LogStatus status;
 
     // 当前节点耗时，单位毫秒。
     private Long costMs;

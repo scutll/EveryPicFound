@@ -1,39 +1,81 @@
 package com.everypicfound.common.log;
+
+
+/**
+ * 系统标准日志事件名称。
+ *
+ * <p>
+ * eventName 表示发生了什么；
+ * errorCode 表示为什么发生。
+ * </p>
+ */
 public enum LogEventName {
 
-    // 上传开始日志事件。
-    UPLOAD_START,
+    
+    /**
+     * 未知异常到达统一异常处理器。
+     */
+    COMMON_UNHANDLED_EXCEPTION,
 
-    // 上传成功日志事件。
-    UPLOAD_SUCCESS,
+    /**
+     * 系统异常发生。
+     */
+    SYSTEM_EXCEPTION_OCCURRED,
 
-    // 上传失败日志事件。
-    UPLOAD_FAILED,
+    /**
+     * 业务请求因参数或业务状态规则被拒绝。
+     */
+    BUSINESS_REQUEST_REJECTED,
 
-    // 孤儿文件记录日志事件。
-    ORPHAN_FILE_RECORD,
+    /**
+     * 文件已保存，但元数据入库和补偿删除均失败。
+     */
+    ORPHAN_FILE_DETECTED,
 
-    // 向量写入成功日志事件。
-    VECTOR_UPSERT_SUCCESS,
+    /**
+     * 异步任务发布失败或被线程池拒绝。
+     */
+    TASK_PUBLISH_FAILED,
 
-    // 搜索失败日志事件。
-    SEARCH_FAILED,
+    /**
+     * 向量化任务进入等待重试状态。
+     */
+    VECTORIZATION_RETRY_SCHEDULED,
 
-    // 文件保存成功日志事件。
-    FILE_SAVE_SUCCESS,
+    /**
+     * 向量化任务达到重试上限或发生不可恢复错误。
+     */
+    VECTORIZATION_DEAD_FAILED,
 
-    // 文件保存失败日志事件。
-    FILE_SAVE_FAILED,
+    /**
+     * 图片文件缺失，图片资产被标记为无效。
+     */
+    IMAGE_FILE_MISSING,
 
-    // 文件读取成功日志事件。
-    FILE_READ_SUCCESS,
+    /**
+     * 缓存发生异常，业务已降级为直接访问数据源。
+     */
+    CACHE_DEGRADED,
 
-    // 文件读取失败日志事件。
-    FILE_READ_FAILED,
+    /**
+     * 向量已经写入向量库，但 READY 状态更新失败，
+     * 需要后续一致性补偿。
+     */
+    VECTOR_READY_COMPENSATION_REQUIRED,
 
-    // 文件删除成功日志事件。
-    FILE_DELETE_SUCCESS,
+    /**
+     * 系统依赖组件由可用状态转为不可用状态。
+     */
+    SYSTEM_COMPONENT_DOWN,
 
-    // 文件删除失败日志事件。
-    FILE_DELETE_FAILED
+    /**
+     * 系统依赖组件由不可用状态恢复为可用状态。
+     */
+    SYSTEM_COMPONENT_RECOVERED,
+
+    /**
+     * 启动健康检查失败，并可能触发 fail-fast。
+     */
+    STARTUP_HEALTH_CHECK_FAILED
+    
 }

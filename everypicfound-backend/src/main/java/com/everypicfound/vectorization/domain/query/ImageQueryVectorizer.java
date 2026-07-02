@@ -1,8 +1,13 @@
 package com.everypicfound.vectorization.domain.query;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+
 import org.springframework.stereotype.Component;
 
+import com.everypicfound.common.cache.CacheKeyBuilder;
 import com.everypicfound.common.exception.BizException;
+import com.everypicfound.common.exception.SystemException;
 import com.everypicfound.modelclient.api.ModelVectorizationClient;
 import com.everypicfound.modelclient.domain.ImageVectorizeRequest;
 import com.everypicfound.modelclient.domain.VectorizeResult;
@@ -11,6 +16,7 @@ import com.everypicfound.search.domain.enums.SearchType;
 import com.everypicfound.search.error.SearchErrorCode;
 import com.everypicfound.vectorindex.collection.ActiveCollectionResolver;
 import com.everypicfound.vectorindex.collection.VectorCollectionConfig;
+import com.everypicfound.vectorization.domain.cache.QueryVectorCacheService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,7 +26,11 @@ public class ImageQueryVectorizer implements QueryVectorizer {
     
     private final ModelVectorizationClient modelVectorizationClient;
 
-    private final ActiveCollectionResolver activeCollectionResolver;    
+    private final ActiveCollectionResolver activeCollectionResolver;
+
+    private final QueryVectorCacheService queryVectorCacheService;
+    
+    private final CacheKeyBuilder cacheKeyBuilder;
 
     @Override
     public SearchType supportType() {
@@ -35,9 +45,33 @@ public class ImageQueryVectorizer implements QueryVectorizer {
 
         VectorCollectionConfig config = activeCollectionResolver.resolveActiveCollection();
 
+        byte[] imageBytes;
+        try{
+            imageBytes = request.getQueryImage().readAllBytes();
+        } catch (IOException exception) {
+            throw new SystemException(SearchErrorCode.QUERY_VECTORIZATION_FAILED, exception);
+        }
+
+        String rawKey = String.join(
+    ":",    
+                SearchType.IMAGE.name(),
+                config.getModelName(),
+                config.getVectorVersion(),
+                String.valueOf(config.getVectorDim()),
+                cacheKeyBuilder.hashImage(imageBytes));
+
+        String key = cacheKeyBuilder.buildQueryVectorKey(rawKey);
+
+        QueryEmbedding cachedEmbedding = queryVectorCacheService.get(key, config.getVectorDim());
+
+        if (cachedEmbedding != null) {
+            return cachedEmbedding;
+        }
+
+
         ImageVectorizeRequest imageRequest = ImageVectorizeRequest.builder()
                 .imageInputType(ImageInputType.MULTIPART)
-                .inputStream(request.getQueryImage())
+                .inputStream(new ByteArrayInputStream(imageBytes))
                 .originalFileName(request.getQueryImageOriginalFileName())
                 .fileSize(request.getQueryImageFileSize())
                 .mimeType(request.getQueryImageMimeType())
@@ -47,15 +81,20 @@ public class ImageQueryVectorizer implements QueryVectorizer {
                 .build();
 
         VectorizeResult result = modelVectorizationClient.vectorizeImage(imageRequest);
-        return buildQueryEmbedding(SearchType.IMAGE, result);
+
+        QueryEmbedding queryEmbedding = buildQueryEmbedding(SearchType.IMAGE, result);
+
+        queryVectorCacheService.put(key, config.getVectorDim(), queryEmbedding);
+
+        return queryEmbedding;
     }
     
     private QueryEmbedding buildQueryEmbedding(SearchType searchType, VectorizeResult result) {
         if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
-            throw new BizException(SearchErrorCode.QUERY_VECTORIZATION_FAILED);
+            throw new SystemException(SearchErrorCode.QUERY_VECTORIZATION_FAILED);
         }
         if (result.getEmbedding() == null || result.getEmbedding().isEmpty()) {
-            throw new BizException(SearchErrorCode.QUERY_EMBEDDING_EMPTY);
+            throw new SystemException(SearchErrorCode.QUERY_EMBEDDING_EMPTY);
         }
 
         return QueryEmbedding.builder()

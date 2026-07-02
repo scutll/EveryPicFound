@@ -5,17 +5,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
-import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
-import com.everypicfound.common.exception.ErrorCode;
 import com.everypicfound.common.exception.SystemException;
-import com.everypicfound.common.log.LogContext;
-import com.everypicfound.common.log.LogEventName;
-import com.everypicfound.common.log.LogService;
 import com.everypicfound.common.metric.MetricName;
 import com.everypicfound.common.metric.MetricRecorder;
+import com.everypicfound.common.metric.MetricTag;
 import com.everypicfound.common.metric.MetricTags;
 import com.everypicfound.storage.api.FileStorageService;
 import com.everypicfound.storage.api.StorageSaveRequest;
@@ -32,6 +28,19 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor// 本地文件存储服务实现，使用 Java NIO 操作文件系统。
 public class LocalFileStorageService implements FileStorageService {
 
+    //日志/指标相关字段
+
+    private static final String OPERATION_SAVE = "save";
+    private static final String OPERATION_READ = "read";
+    private static final String OPERATION_DELETE = "delete";
+    private static final String OPERATION_EXISTS = "exists";
+
+    private static final String RESULT_SUCCESS = "success";
+    private static final String RESULT_FAILED = "failed";
+    private static final String RESULT_NOT_FOUND = "not_found";
+    private static final String RESULT_TRUE = "true";
+    private static final String RESULT_FALSE = "false";
+
     private final StorageProperties storageProperties;
     // 本地存储配置对象，提供 basePath、accessUrlPrefix 等存储相关配置。
     //DateBasedStoragePathGenerator -> 生成 storagePath
@@ -40,9 +49,6 @@ public class LocalFileStorageService implements FileStorageService {
     // 存储路径生成器接口，用于根据 imageId、fileExt、uploadTime 生成统一的相对 storagePath。
     //LocalFileStorageService       -> 根据 basePath 保存文件，并生成 accessUrl
 
-    private final LogService logService;
-    // LocalFileStorageService 记录 storagePath、operation、success、failReason 等文件操作日志。
-
     private final MetricRecorder metricRecorder;
     // LocalFileStorageService 记录保存、读取、删除耗时和失败次数等指标。
 
@@ -50,6 +56,8 @@ public class LocalFileStorageService implements FileStorageService {
     public StoredFile save(StorageSaveRequest request) {
         long startTime = System.currentTimeMillis();
         String storagePath = "";
+
+        String result = RESULT_FAILED;
         try {
             validateSaveRequest(request);//检查请求是否合法，主要看 request、inputStream、imageId、fileExt 是否为空或非法。
             storagePath=generateStoragePath(request);
@@ -69,49 +77,44 @@ public class LocalFileStorageService implements FileStorageService {
             storedFile.setFileSize(request.getFileSize());//把文件大小存储到 fileSize 属性，方便后续使用。
             storedFile.setMimeType(request.getMimeType());//把文件 MIME 类型存储到 mimeType 属性，方便后续使用。
 
-            long costMs = costMs(startTime);
-            recordFileSuccessLog("save", LogEventName.FILE_SAVE_SUCCESS, storagePath, request.getImageId(), costMs);
-            metricRecorder.recordTimer(MetricName.FILE_SAVE_DURATION_MS, costMs, buildMetricTags("save", "success"));
-            metricRecorder.recordValue(MetricName.STORED_FILE_SIZE_BYTES, request.getFileSize(), buildMetricTags("save", "success"));
+            result = RESULT_SUCCESS;
+            recordStorageFileSize(OPERATION_SAVE, request.getFileSize());
+            
             return storedFile;
+
         } catch (IOException e) {
-            SystemException exception = new SystemException(StorageErrorCode.FILE_SAVE_FAILED,e);
-            recordFileFailure("save", LogEventName.FILE_SAVE_FAILED, MetricName.FILE_SAVE_FAILED_COUNT,
-                    storagePath, getImageId(request), costMs(startTime), exception);
-            throw exception;
-        } catch (SystemException e) {
-            recordFileFailure("save", LogEventName.FILE_SAVE_FAILED, MetricName.FILE_SAVE_FAILED_COUNT,
-                    storagePath, getImageId(request), costMs(startTime), e);
-            throw e;
+            /*
+             * IOException 第一次转换为项目统一异常。
+             * 不直接报告错误而是由上层调用段报告异常栈
+             * 必须把 exception 作为 cause 传入。
+             */
+            throw new SystemException(StorageErrorCode.FILE_SAVE_FAILED, e);
+        } finally {
+            recordStorageMetrics(OPERATION_SAVE, result, startTime);
         }
     }
 
     @Override
     public boolean delete(String storagePath) {
         long startTime = System.currentTimeMillis();
+        String result = RESULT_FAILED;
         try {
             validateStoragePath(storagePath);//检查 storagePath 不能为空。
             Path targetPath = resolveStoragePath(storagePath);
             boolean deleted = Files.deleteIfExists(targetPath);
-            long costMs = costMs(startTime);
+
+
             if (!deleted) {
-                SystemException exception = new SystemException(StorageErrorCode.FILE_NOT_FOUND);
-                recordFileFailure("delete", LogEventName.FILE_DELETE_FAILED, MetricName.FILE_DELETE_FAILED_COUNT,
-                        storagePath, null, costMs, exception);
+                result = RESULT_NOT_FOUND;
                 return false;
             }
-            recordFileSuccessLog("delete", LogEventName.FILE_DELETE_SUCCESS, storagePath, null, costMs);
-            metricRecorder.recordTimer(MetricName.FILE_DELETE_DURATION_MS, costMs, buildMetricTags("delete", "success"));
-            return deleted;
+
+            result = RESULT_SUCCESS;
+            return true;
         } catch (IOException e) {
-            SystemException exception = new SystemException(StorageErrorCode.FILE_DELETE_FAILED, e);
-            recordFileFailure("delete", LogEventName.FILE_DELETE_FAILED, MetricName.FILE_DELETE_FAILED_COUNT,
-                    storagePath, null, costMs(startTime), exception);
-            return false;
-        } catch (SystemException e) {
-            recordFileFailure("delete", LogEventName.FILE_DELETE_FAILED, MetricName.FILE_DELETE_FAILED_COUNT,
-                    storagePath, null, costMs(startTime), e);
-            throw e;
+            throw new SystemException(StorageErrorCode.FILE_DELETE_FAILED, e);
+        } finally {
+            recordStorageMetrics(OPERATION_DELETE, result, startTime);
         }
     }
 
@@ -137,10 +140,13 @@ public class LocalFileStorageService implements FileStorageService {
     @Override
     public StorageResource read(String storagePath) {
         long startTime = System.currentTimeMillis();
+        String result = RESULT_FAILED;
         try {
             Path targetPath = resolveStoragePath(storagePath);//把相对路径转成真实本地路径，防止路径穿越攻击。
 
-            if(!Files.exists(targetPath)){
+            if (!Files.exists(targetPath)) {
+                result = RESULT_NOT_FOUND;
+
                 throw new SystemException(StorageErrorCode.FILE_NOT_FOUND);
             }
 
@@ -155,30 +161,36 @@ public class LocalFileStorageService implements FileStorageService {
             resource.setFileExt(fileExt);//从文件名里提取扩展名，作为资源的 fileExt 属性。
             resource.setAccessUrl(accessUrl);//生成访问 URL，作为资源的 accessUrl 属性。
             resource.setInputStream(Files.newInputStream(targetPath));// 获取文件输入流
-            long costMs = costMs(startTime);
-            recordFileSuccessLog("read", LogEventName.FILE_READ_SUCCESS, storagePath, null, costMs);
-            metricRecorder.recordTimer(MetricName.FILE_READ_DURATION_MS, costMs, buildMetricTags("read", "success"));
+            
+            
+            result = RESULT_SUCCESS;
+
+            recordStorageFileSize(OPERATION_READ, fileSize);
+
             return resource;
         } catch (IOException e) {
-            SystemException exception = new SystemException(StorageErrorCode.FILE_READ_FAILED, e);
-            recordFileFailure("read", LogEventName.FILE_READ_FAILED, MetricName.FILE_READ_FAILED_COUNT,
-                    storagePath, null, costMs(startTime), exception);
-            throw exception;
-        } catch (SystemException e) {
-            recordFileFailure("read", LogEventName.FILE_READ_FAILED, MetricName.FILE_READ_FAILED_COUNT,
-                    storagePath, null, costMs(startTime), e);
-            if (StorageErrorCode.FILE_NOT_FOUND.equals(e.getErrorCode())) {
-                metricRecorder.increment(MetricName.FILE_MISSING_COUNT, buildMetricTags("read", "failed"));
-            }
-            throw e;
+            throw new SystemException(StorageErrorCode.FILE_READ_FAILED, e);
+        } finally {
+            recordStorageMetrics(OPERATION_READ, result, startTime);
         }
     }
 
 
     @Override
     public boolean exists(String storagePath) {
-        Path targetPath = resolveStoragePath(storagePath);//把相对路径转成真实本地路径，防止路径穿越攻击。
-        return Files.exists(targetPath);
+        long startTime = System.currentTimeMillis();
+        String result = RESULT_FAILED;
+
+        try{
+            Path targetPath = resolveStoragePath(storagePath);//把相对路径转成真实本地路径，防止路径穿越攻击。
+            boolean exists = Files.exists(targetPath);
+
+            result = exists? RESULT_TRUE:RESULT_FALSE;
+            
+            return exists;
+        } finally {
+            recordStorageMetrics(OPERATION_EXISTS, result, startTime);
+        }
     }
 
     //保存前检查请求是否合法。主要看 request、inputStream、imageId、fileExt 是否为空或非法。
@@ -268,78 +280,47 @@ public class LocalFileStorageService implements FileStorageService {
         return result;
     }
 
-    private void recordFileSuccessLog(String operation, LogEventName eventName, String storagePath, Long imageId, Long costMs) {
-        logService.recordSuccessLog(LogContext.builder()
-                .module("storage")
-                .bizType("FILE_STORAGE")
-                .bizId(imageId == null ? "" : String.valueOf(imageId))
-                .operation(operation)
-                .eventName(eventName.name())
-                .status("SUCCESS")
-                .costMs(costMs)
-                .message("storagePath=" + safe(storagePath))
-                .build());
-    }
 
-    private void recordFileFailure(String operation, LogEventName eventName, MetricName failedMetricName,
-                                   String storagePath, Long imageId, Long costMs, SystemException exception) {
-        logService.recordErrorLog(LogContext.builder()
-                .module("storage")
-                .bizType("FILE_STORAGE")
-                .bizId(imageId == null ? "" : String.valueOf(imageId))
-                .operation(operation)
-                .eventName(eventName.name())
-                .status("FAILED")
-                .costMs(costMs)
-                .errorCode(formatErrorCode(exception.getErrorCode()))
-                .message("storagePath=" + safe(storagePath))
-                .build());
-
-        metricRecorder.increment(failedMetricName, buildMetricTags(operation, "failed"));
-    }
-
-    private MetricTags buildMetricTags(String operation, String result) {
-        return MetricTags.builder()
-                .tags(Map.of("module", "storage", "operation", operation, "result", result))
-                .build();
-    }
-
-    private Long costMs(long startTime) {
-        return System.currentTimeMillis() - startTime;
-    }
-
-    private Long getImageId(StorageSaveRequest request) {
-        if (request == null) {
-            return null;
-        }
-        return request.getImageId();
-    }
-
-    private String formatErrorCode(ErrorCode errorCode) {
-        if (errorCode == null) {
-            return "";
-        }
-        // codex: 日志字段 errorCode 应记录错误码标识，不记录 message，方便按错误类型检索。
-        if (errorCode instanceof Enum<?> enumErrorCode) {
-            return enumErrorCode.name();
-        }
-        return String.valueOf(errorCode.getCode());
-    }
-
-    private String safe(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\r", " ").replace("\n", " ");
-    }
 
     //从文件名里提取扩展名，比如：
-    private String extractFileExt(String fileName){
+    private String extractFileExt(String fileName) {
         int dotIndex = fileName.lastIndexOf('.');
         // codex: 没有点号或点号在最后一位时都没有合法扩展名，不能把整个文件名误当作扩展名。
         if (dotIndex < 0 || dotIndex == fileName.length() - 1) {
             return "";
         }
         return fileName.substring(dotIndex + 1);//返回扩展名，不带点。substring 从 dotIndex + 1 开始，直到字符串末尾。
+    }
+    
+    private void recordStorageMetrics(
+            String operation,
+            String result,
+            long startTime
+    ) {
+        MetricTags tags = MetricTags.builder()
+                .tag(MetricTag.OPERATION, operation)
+                .tag(MetricTag.RESULT, result)
+                .build();
+
+        metricRecorder.increment(
+                MetricName.STORAGE_OPERATIONS,
+                tags);
+
+        metricRecorder.recordTimer(
+                MetricName.STORAGE_DURATION,
+                System.currentTimeMillis() - startTime,
+                tags);
+    }
+    
+    private void recordStorageFileSize(
+            String operation,
+            Number fileSize) {
+
+        metricRecorder.recordValue(
+                MetricName.STORAGE_FILE_SIZE,
+                fileSize,
+                MetricTags.builder()
+                        .tag(MetricTag.OPERATION, operation)
+                        .build());
     }
 }

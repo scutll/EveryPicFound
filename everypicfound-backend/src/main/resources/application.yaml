@@ -12,6 +12,16 @@ spring:
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      database: 0
+      connect-timeout: 2s
+      timeout: 1s
+      repositories:
+        enabled: false
+
 
 mybatis-plus:
   mapper-locations: classpath:/mapper/*.xml
@@ -22,6 +32,16 @@ server:
   port: 8080
 
 everypicfound:
+  metrics:
+    enabled: true
+
+  log:
+    event-enabled: true
+    path: ./logs
+    max-file-size: 10MB
+    max-history: 7
+    total-size-cap: 500MB
+
   storage:
     base-path: ./data/images
     access-url-prefix: /images
@@ -59,6 +79,10 @@ everypicfound:
       text-weight: 0.5
       normalize-enabled: true
 
+    cache:
+      enabled: true
+      text-vector-ttl-seconds: 3600
+
   system-health:
     scheduled-enabled: true
     check-interval-ms: 60000
@@ -71,5 +95,40 @@ everypicfound:
     over-fetch-ratio: 3
     max-top-n: 200
     rerank-enabled: false
-    cache-enabled: false
     max-query-text-length: 500
+
+    #caching
+    cache-enabled: true
+    result-cache-ttl-seconds: 120
+    cache-empty-result: false
+
+
+  cache:
+    enabled: true
+    ttl-seconds: 300
+    key-prefix: epf:dev
+
+    
+# Actuator配置
+management:
+  endpoints:
+    web:
+      # 开放Actuator可通过Web访问的端点
+      exposure:
+        include:
+        - health
+        - info
+        - metrics #返回当前已注册的指标名称
+        - prometheus #Prometheus进行抓取的路径
+
+  endpoint:
+    health:
+     show-details: always
+
+  metrics:
+    tags:
+      application: ${spring.application.name} #公共标签
+    
+    distribution:
+      percentiles-histogram: #对everypicfound开头的Timer和DistributionSummary开启直方图桶，用于计算P50P95等指标
+        everypicfound: true

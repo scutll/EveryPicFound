@@ -21,4 +21,10 @@ public class SearchProperties {
     private Boolean cacheEnabled = false;
 
     private Integer maxQueryTextLength = 500;
+
+    // 搜索结果缓存 TTL，单位：秒。
+    private Long resultCacheTtlSeconds = 300L;
+
+    // 是否缓存空搜索结果。
+    private Boolean cacheEmptyResult = true;
 }

@@ -51,7 +51,12 @@ public enum ModelClientErrorCode implements ErrorCode{
     /**
      * 图片输入类型非法。
      */
-    IMAGE_INPUT_TYPE_INVALID(500009, "image input type invalid");
+    IMAGE_INPUT_TYPE_INVALID(500009, "image input type invalid"),
+
+    /**
+     * 文本输入非法。
+     */
+    TEXT_INPUT_INVALID(500010, "text input invalid");
 
     private final Integer code;
 

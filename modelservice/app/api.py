@@ -1,9 +1,8 @@
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
-from app.inference_lock import inference_lock
 from app.schemas import ImageVectorizeRequest, TextVectorizeRequest
 from app.schemas import HealthResponse, VectorizeResponse
-from app.vectorization_service import VectorizeResult
+from app.batching.models import VectorizeResult
 from app.log_utils import get_model_service_logger
 
 
@@ -85,8 +84,8 @@ async def health(request: Request):
 async def vectorize_image(
     request: Request,
     imageId: int = Form(default=None),
-    traceId: str = Form(default=None),
-    requestId: str = Form(default=None),
+    traceId: str = Form(...),
+    requestId: str = Form(...),
     file: UploadFile = File(...),
 ):
     service = get_vectorization_service(request)
@@ -112,13 +111,14 @@ async def vectorize_image(
         f"fileSize={image_request.fileSize}"
     )
     
-    async with inference_lock:
-        result = service.vectorize_image(
-            image_bytes=image_bytes,
-            image_id=image_request.imageId,
-            trace_id=image_request.traceId,
-            request_id=image_request.requestId,
-        )
+    result = await service.vectorize_image(
+        image_bytes=image_bytes,
+        image_id=image_request.imageId,
+        trace_id=image_request.traceId,
+        request_id=image_request.requestId,
+        original_file_name=image_request.originalFileName,
+        mime_type=image_request.mimeType,
+    )
 
     return build_vectorize_response(result)
 
@@ -126,8 +126,8 @@ async def vectorize_image(
 @router.post("/vectorize/text", response_model=VectorizeResponse)
 async def vectorize_text(
     request: Request,
-    traceId: str = Form(default=None),
-    requestId: str = Form(default=None),
+    traceId: str = Form(...),
+    requestId: str = Form(...),
     text: str = Form(...)
 ):
     service = get_vectorization_service(request)
@@ -140,11 +140,10 @@ async def vectorize_text(
         f"textLength={len(text)}"
     )
     
-    async with inference_lock:
-        result = service.vectorize_text(
-            text=text,
-            trace_id=traceId,
-            request_id=requestId,
-        )
+    result = await service.vectorize_text(
+        text=text,
+        trace_id=traceId,
+        request_id=requestId,
+    )
     
     return build_vectorize_response(result)

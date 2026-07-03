@@ -12,7 +12,7 @@ from config import(
 
 from app.api import router
 from app.model_loader import OpenClipModelLoader
-from app.vectorization_service import VectorizationService
+from app.batching.runtime import ModelBatchingRuntime
 from app.log_utils import get_model_service_logger
 
 
@@ -23,35 +23,41 @@ logger = get_model_service_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("event=MODEL_SERVICE_STARTING")
-    
-    loader = OpenClipModelLoader(
-        model_name=MODEL_NAME,
-        checkpoint_path=MODEL_PATH,
-        tokenizer_dir=TOKENIZER_DIR,
-        device=DEVICE,
-        vector_dim=VECTOR_DIM
-    )
-    
-    runtime = loader.load()
-    # 全局内注册Service
-    app.state.vectorization_service = VectorizationService(runtime)
-    
-    logger.info(
-        "event=MODEL_SERVICE_STARTED "
-        f"modelName={runtime.model_name} "
-        f"checkpoint={runtime.checkpoint_path} "
-        f"device={runtime.device} "
-        f"vectorDim={runtime.vector_dim} "
-        f"loadCostMs={runtime.load_cost_ms}"
-    )
-    app.state.vectorization_service.warm_up()
-    
-    yield
-    
-    
-    logger.info("event=MODEL_SERVICE_STOPPING")
-    app.state.vectorization_service = None
-    logger.info("event=MODEL_SERVICE_STOPPED")
+    batching_runtime = None
+    try:
+        loader = OpenClipModelLoader(
+            model_name=MODEL_NAME,
+            checkpoint_path=MODEL_PATH,
+            tokenizer_dir=TOKENIZER_DIR,
+            device=DEVICE,
+            vector_dim=VECTOR_DIM
+        )
+
+        runtime = loader.load()
+        batching_runtime = ModelBatchingRuntime(runtime)
+        await batching_runtime.start()
+        # 全局内注册Service
+        app.state.model_batching_runtime = batching_runtime
+        app.state.vectorization_service = batching_runtime.service
+
+        logger.info(
+            "event=MODEL_SERVICE_STARTED "
+            f"modelName={runtime.model_name} "
+            f"checkpoint={runtime.checkpoint_path} "
+            f"device={runtime.device} "
+            f"vectorDim={runtime.vector_dim} "
+            f"loadCostMs={runtime.load_cost_ms}"
+        )
+        await batching_runtime.warm_up()
+
+        yield
+    finally:
+        logger.info("event=MODEL_SERVICE_STOPPING")
+        if batching_runtime is not None:
+            await batching_runtime.shutdown()
+        app.state.model_batching_runtime = None
+        app.state.vectorization_service = None
+        logger.info("event=MODEL_SERVICE_STOPPED")
     
 
 app = FastAPI(

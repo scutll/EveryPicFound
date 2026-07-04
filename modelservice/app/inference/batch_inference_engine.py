@@ -6,7 +6,7 @@ from app.batching.models import BatchInferenceResult
 
 
 class BatchInferenceEngine:
-    """只执行 OpenCLIP 批量推理，不感知 Queue、Ticket 或 Future。"""
+    """负责执行批量推理, 根据设计文档, 任务参数只涉及基本信息流比如tokens/image, 不带入EventLoop信息"""
 
     def __init__(self, runtime):
         """初始化批量推理引擎。
@@ -14,8 +14,6 @@ class BatchInferenceEngine:
         Args:
             runtime: OpenCLIP 模型、preprocess、tokenizer 和设备信息。
 
-        Returns:
-            None。
         """
 
         self.runtime = runtime
@@ -24,10 +22,10 @@ class BatchInferenceEngine:
         """编码文本 token 批次，并返回归一化后的 CPU 向量。
 
         Args:
-            tokens: 文本 token 批量 Tensor，形状为 ``[B,L]``。
+            tokens: 文本 token 批量 Tensor, 形状为 ``[B,L]``。
 
         Returns:
-            BatchInferenceResult，包含 ``[B,D]`` CPU embedding、批大小和耗时。
+            BatchInferenceResult, 包含 ``[B,D]`` CPU embedding、批大小和耗时。
         """
 
         start = time.perf_counter()
@@ -42,10 +40,10 @@ class BatchInferenceEngine:
         """编码图片批次，并返回归一化后的 CPU 向量。
 
         Args:
-            images: 图片批量 Tensor，形状为 ``[B,C,H,W]``。
+            images: 图片批量 Tensor, 形状为 ``[B,C,H,W]``。
 
         Returns:
-            BatchInferenceResult，包含 ``[B,D]`` CPU embedding、批大小和耗时。
+            BatchInferenceResult, 包含 ``[B,D]`` CPU embedding、批大小和耗时。
         """
 
         start = time.perf_counter()
@@ -57,13 +55,7 @@ class BatchInferenceEngine:
         return self._result(embeddings, start)
 
     def _sync_cuda(self) -> None:
-        """在 CUDA 设备上同步 GPU，保证耗时统计覆盖真实推理时间。
-
-        Args:
-            None。
-
-        Returns:
-            None。
+        """在 CUDA 设备上同步 GPU, 保证耗时统计覆盖真实推理时间。
         """
 
         if str(self.runtime.device).startswith("cuda"):

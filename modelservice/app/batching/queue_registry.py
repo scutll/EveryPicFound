@@ -4,8 +4,7 @@ import asyncio
 class BatchQueueRegistry:
     """动态批处理链路中的全部 asyncio 队列。
 
-    Queue 只在 FastAPI 事件循环中创建和访问。线程池函数必须把数据返回给协程，
-    不能直接 put/get Queue。
+    Queue 只在 FastAPI 事件循环中创建和访问。线程池函数不知晓和访问Queue
     """
 
     def __init__(

@@ -195,7 +195,8 @@ class ModelBatchingRuntime:
         self._fail_gpu_batches(error_code, message)
 
     def _fail_queue_items(self, queue, error_code: str, message: str) -> None:
-        """在事件循环中失败普通队列元素携带的 Ticket。
+        """在事件循环中使普通队列元素携带的 Ticket失败并删除。
+        在清空队列的时候用于清理未完成任务
 
         Args:
             queue: 存放带 Ticket 元素的 asyncio.Queue。

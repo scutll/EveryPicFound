@@ -128,6 +128,9 @@ conda install pytorch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 pytorch-cuda=
 uvicorn --app-dir modelservice main:app --host 0.0.0.0 --port 8001 --workers 1
 ```
 
+- 当前 `modelservice` 已接入动态批处理运行时，启动时会自动完成模型加载、批处理组件初始化以及 warmup。
+- 启动完成后可访问 `http://127.0.0.1:8001/health` 检查服务是否就绪。
+
 
 ### qdrant向量库/mysql启动
 - qdrant / mysql均运行在docker容器中，通过docker-compose.yml一起启动
@@ -168,7 +171,7 @@ mvn spring-boot:run
 - 先确保已经下载node
 ```bash
 cd everypicfound-frontend
-mvn install
-mvn run dev
+npm install
+npm run dev
 ```
 

@@ -40,3 +40,4 @@ inject_images/images/*
 # Node / Frontend
 node_modules/
 everypicfound-frontend/dist/
+performance-test/results/

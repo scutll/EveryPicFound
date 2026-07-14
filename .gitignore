@@ -40,3 +40,6 @@ inject_images/images/*
 # Node / Frontend
 node_modules/
 everypicfound-frontend/dist/
+performance-test/results/image-search-baseline-cache-miss-vu25-40s-topk30.txt
+performance-test/results/
+projects/everypicfound_defense_ppt169_20260702/

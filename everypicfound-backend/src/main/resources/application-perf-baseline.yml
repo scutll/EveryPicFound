@@ -1,8 +1,6 @@
 spring:
   application:
     name: everypicfound-backend
-  profiles:
-    active: dev
   servlet:
     multipart:
       max-file-size: 20MB
@@ -22,7 +20,6 @@ spring:
       repositories:
         enabled: false
 
-
 mybatis-plus:
   mapper-locations: classpath:/mapper/*.xml
   configuration:
@@ -35,7 +32,7 @@ everypicfound:
   cache:
     enabled: false
     ttl-seconds: 300
-    key-prefix: epf:dev
+    key-prefix: epf:perf:baseline
 
   metrics:
     enabled: true
@@ -71,7 +68,7 @@ everypicfound:
       port: 6334
       use-tls: false
       timeout-ms: 10000
-      
+
   vectorization:
     max-retry-count: 3
     processing-timeout-seconds: 300
@@ -102,34 +99,28 @@ everypicfound:
     rerank-enabled: false
     max-query-text-length: 500
 
-    #caching
     cache-enabled: false
     result-cache-ttl-seconds: 120
     cache-empty-result: false
 
-
-
-    
-# Actuator配置
 management:
   endpoints:
     web:
-      # 开放Actuator可通过Web访问的端点
       exposure:
         include:
-        - health
-        - info
-        - metrics #返回当前已注册的指标名称
-        - prometheus #Prometheus进行抓取的路径
+          - health
+          - info
+          - metrics
+          - prometheus
 
   endpoint:
     health:
-     show-details: always
+      show-details: always
 
   metrics:
     tags:
-      application: ${spring.application.name} #公共标签
-    
+      application: ${spring.application.name}
+
     distribution:
-      percentiles-histogram: #对everypicfound开头的Timer和DistributionSummary开启直方图桶，用于计算P50P95等指标
+      percentiles-histogram:
         everypicfound: true

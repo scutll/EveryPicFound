@@ -1,6 +1,6 @@
 spring:
   application:
-    name: everypicfound-backend
+    name: media-search-service
   profiles:
     active: dev
   servlet:

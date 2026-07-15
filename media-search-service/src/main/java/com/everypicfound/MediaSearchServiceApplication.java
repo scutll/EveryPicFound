@@ -10,10 +10,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @MapperScan("com.everypicfound.**.infrastructure.mapper")
 @ConfigurationPropertiesScan
 @EnableScheduling
-public class EverypicfoundBackendApplication {
+public class MediaSearchServiceApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(EverypicfoundBackendApplication.class, args);
+		SpringApplication.run(MediaSearchServiceApplication.class, args);
 	}
 
 }

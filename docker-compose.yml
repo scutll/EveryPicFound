@@ -1,0 +1,729 @@
+# ============================================================
+# EveryPicFound 统一开发环境
+#
+# 作用：
+# 1. 编排 MySQL、Redis、Qdrant、RocketMQ、Debezium 等基础设施
+# 2. 编排 Gateway、Identity、Media Search 三个 Java 微服务
+# 3. 通过同一个 Docker Bridge 网络完成容器间服务发现
+#
+# 使用方式：
+#   普通启动：
+#     docker compose up -d
+#
+#   启动 CDC：
+#     docker compose --profile cdc up -d
+# ============================================================
+
+name: everypicfound
+
+services:
+
+  # ==========================================================
+  # MySQL：业务主数据库
+  #
+  # 当前同时承载：
+  # 1. media-search-service 的 everypicfound 数据库
+  # 2. identity-service 后续使用的 identity_db
+  #
+  # 由于 Debezium 需要读取 Binlog，所以必须开启 ROW Binlog。
+  # ==========================================================
+  mysql:
+    image: mysql:8.0
+    container_name: everypicfound-mysql
+    restart: unless-stopped
+
+    # --------------------------------------------------------
+    # MySQL 官方镜像初始化参数
+    #
+    # 注意：
+    # 这些参数只会在 /var/lib/mysql 为空时执行。
+    # 当前复用旧数据卷后，不会重新创建数据库或用户。
+    # --------------------------------------------------------
+    environment:
+      TZ: Asia/Shanghai
+
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+    # --------------------------------------------------------
+    # MySQL 服务参数
+    #
+    # 前三项是字符集与时区配置。
+    # 后五项是 Debezium CDC 所需的 Binlog 配置。
+    # --------------------------------------------------------
+    command:
+      # 使用 utf8mb4，完整支持中文及四字节 Unicode 字符。
+      - --character-set-server=utf8mb4
+
+      # 使用 Unicode 排序规则，ci 表示比较时不区分大小写。
+      - --collation-server=utf8mb4_unicode_ci
+
+      # MySQL 会话默认时区。
+      - --default-time-zone=+08:00
+
+      # MySQL 在复制体系中的唯一节点编号。
+      - --server-id=1
+
+      # 启用 Binary Log，Debezium 从这里读取数据库变更。
+      - --log-bin=mysql-bin
+
+      # 按数据行记录 INSERT、UPDATE、DELETE。
+      - --binlog-format=ROW
+
+      # 在 Binlog 中记录完整行数据。
+      - --binlog-row-image=FULL
+
+      # Binlog 保留十天，防止 Debezium 短期停机后进度失效。
+      - --binlog-expire-logs-seconds=864000
+
+    # --------------------------------------------------------
+    # 宿主机端口映射
+    #
+    # Windows 本机访问：
+    #   localhost:${MYSQL_HOST_PORT}
+    #
+    # 容器内部访问：
+    #   mysql:3306
+    # --------------------------------------------------------
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT}:3306"
+
+    # --------------------------------------------------------
+    # 数据持久化
+    #
+    # mysql-data 在底部声明为 external volume，
+    # 实际绑定原来 media-search-service Compose 的旧数据卷。
+    # --------------------------------------------------------
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+    # --------------------------------------------------------
+    # 健康检查
+    #
+    # mysqladmin ping 成功表示 MySQL 已能接受连接。
+    # $$ 用于避免 MYSQL_ROOT_PASSWORD 被 Compose 提前展开，
+    # 最终由容器内部 Shell 展开。
+    # --------------------------------------------------------
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+    networks:
+      - everypicfound-network
+
+
+  # ==========================================================
+  # Redis：缓存与短期状态存储
+  #
+  # 后续主要用途：
+  # 1. 登录失败计数
+  # 2. Session、屏障和 deny 状态
+  # 3. 搜索缓存、文本向量缓存
+  # 4. Debezium Offset 存储
+  # ==========================================================
+  redis:
+    image: redis:7.4-alpine
+    container_name: everypicfound-redis
+    restart: unless-stopped
+
+    # --------------------------------------------------------
+    # Redis 持久化配置
+    #
+    # appendonly=yes：
+    #   开启 AOF，记录写命令。
+    #
+    # appendfsync=everysec：
+    #   每秒左右刷盘一次，是性能和可靠性的折中。
+    # --------------------------------------------------------
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+
+    # 本机可通过 localhost:${REDIS_HOST_PORT} 调试。
+    # 容器之间使用 redis:6379。
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT}:6379"
+
+    # Redis 官方镜像将持久化文件写入 /data。
+    volumes:
+      - redis-data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+    networks:
+      - everypicfound-network
+
+
+  # ==========================================================
+  # Qdrant：向量数据库
+  #
+  # 6333：HTTP API
+  # 6334：gRPC API，Java Qdrant Client 主要使用该端口
+  #
+  # QDRANT_VERSION 应设置成旧容器实际使用的版本，
+  # 不建议在复用旧数据卷时继续使用 latest。
+  # ==========================================================
+  qdrant:
+    image: qdrant/qdrant
+    container_name: everypicfound-qdrant
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:${QDRANT_HTTP_HOST_PORT}:6333"
+      - "127.0.0.1:${QDRANT_GRPC_HOST_PORT}:6334"
+
+    # 复用原 Qdrant 的 Collection、向量与索引数据。
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+    # 当前没有使用容器内部 curl/wget 健康检查，
+    # Media 服务依赖时暂时使用 service_started。
+    networks:
+      - everypicfound-network
+
+
+  # ==========================================================
+  # RocketMQ NameServer：路由注册中心
+  #
+  # 负责保存：
+  # 1. Broker 注册信息
+  # 2. Topic 路由信息
+  # 3. Broker 地址与读写队列信息
+  #
+  # 不负责保存业务消息。
+  # ==========================================================
+  rocketmq-namesrv:
+    image: apache/rocketmq:${ROCKETMQ_VERSION}
+    container_name: everypicfound-rocketmq-namesrv
+    restart: unless-stopped
+
+    # 启动 NameServer。
+    command: sh mqnamesrv
+
+    # 9876 只向 Compose 内部网络开放。
+    # 容器内部地址：rocketmq-namesrv:9876
+    expose:
+      - "9876"
+
+    # 只保存运行日志，不保存业务消息。
+    volumes:
+      - rocketmq-namesrv-logs:/home/rocketmq/logs
+
+    # 检查 NameServer 的 9876 端口是否可连接。
+    #
+    # 相比检查 Java 进程名称，
+    # 端口检查更接近“服务已经可以提供网络连接”。
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'echo > /dev/tcp/127.0.0.1/9876'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+    networks:
+      - everypicfound-network
+
+
+  # ==========================================================
+  # RocketMQ Broker：消息存储与收发节点
+  #
+  # 负责：
+  # 1. 接收 Producer 消息
+  # 2. 持久化 CommitLog
+  # 3. 向 Consumer 提供消息
+  # 4. 管理 Topic、Queue 和消费进度
+  #
+  # 当前为单 Broker 开发环境，不具备生产级高可用。
+  # ==========================================================
+  rocketmq-broker:
+    image: apache/rocketmq:${ROCKETMQ_VERSION}
+    container_name: everypicfound-rocketmq-broker
+    restart: unless-stopped
+
+    # --------------------------------------------------------
+    # Broker 启动参数
+    #
+    # -n：指定 NameServer 地址
+    # -c：指定 Broker 配置文件
+    #
+    # 官方 Docker 示例也使用版本目录中的 broker.conf。
+    # --------------------------------------------------------
+    command:
+      - sh
+      - mqbroker
+      - -n
+      - rocketmq-namesrv:9876
+      - -c
+      - /home/rocketmq/rocketmq-${ROCKETMQ_VERSION}/conf/broker.conf
+
+    # NameServer 健康后才启动 Broker。
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+
+    # --------------------------------------------------------
+    # RocketMQ 经典客户端协议端口
+    #
+    # 10911：Broker 主监听端口
+    # 10909、10912：Broker 辅助通信端口
+    #
+    # 当前只向 Docker 网络开放，没有映射到 Windows。
+    # --------------------------------------------------------
+    expose:
+      - "10909"
+      - "10911"
+      - "10912"
+
+    # --------------------------------------------------------
+    # Broker 配置与持久化目录
+    #
+    # broker.conf：只读挂载，防止容器修改仓库配置
+    # logs：Broker 日志
+    # store：CommitLog、ConsumeQueue、Index 等核心数据
+    # --------------------------------------------------------
+    volumes:
+      - ./deploy/rocketmq/broker.conf:/home/rocketmq/rocketmq-${ROCKETMQ_VERSION}/conf/broker.conf:ro
+      - rocketmq-broker-logs:/home/rocketmq/logs
+      - rocketmq-broker-store:/home/rocketmq/store
+
+    # 使用 mqadmin 查询集群。
+    # 能查询到 DefaultCluster，说明 Broker 已注册到 NameServer。
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "sh mqadmin clusterList -n rocketmq-namesrv:9876 | grep -q DefaultCluster"
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+    networks:
+      - everypicfound-network
+
+
+  # ==========================================================
+  # Debezium Server：MySQL CDC → RocketMQ
+  #
+  # 数据链路：
+  #   identity_db.outbox_event
+  #        ↓ MySQL Binlog
+  #   Debezium MySQL Connector
+  #        ↓
+  #   RocketMQ Sink
+  #
+  # 当前使用 cdc Profile，因此普通 docker compose up 不启动。
+  # 必须显式执行：
+  #   docker compose --profile cdc up -d debezium-server
+  # ==========================================================
+  debezium-server:
+    image: quay.io/debezium/server:${DEBEZIUM_VERSION}
+    container_name: everypicfound-debezium-server
+    restart: unless-stopped
+
+    profiles:
+      - cdc
+
+    # MySQL、Redis 和 RocketMQ 全部健康后才启动 CDC。
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+      rocketmq-broker:
+        condition: service_healthy
+
+    environment:
+
+      # ------------------------------------------------------
+      # Sink：Debezium 事件输出到 RocketMQ
+      # ------------------------------------------------------
+
+      # 指定输出目标为 RocketMQ。
+      DEBEZIUM_SINK_TYPE: rocketmq
+
+      # RocketMQ NameServer 地址。
+      DEBEZIUM_SINK_ROCKETMQ_PRODUCER_NAME_SRV_ADDR: rocketmq-namesrv:9876
+
+      # Debezium RocketMQ Producer Group。
+      DEBEZIUM_SINK_ROCKETMQ_PRODUCER_GROUP: epf-debezium-producer
+
+      # 单条 RocketMQ 消息最大 4 MiB。
+      # Outbox Payload 不应保存图片、Token 或大型二进制数据。
+      DEBEZIUM_SINK_ROCKETMQ_PRODUCER_MAX_MESSAGE_SIZE: "4194304"
+
+      # 同步发送消息最多等待 5 秒。
+      DEBEZIUM_SINK_ROCKETMQ_PRODUCER_SEND_MSG_TIMEOUT: "5000"
+
+      # 当前本地环境不启用 RocketMQ ACL。
+      DEBEZIUM_SINK_ROCKETMQ_PRODUCER_ACL_ENABLED: "false"
+
+
+      # ------------------------------------------------------
+      # Source：Debezium MySQL Connector
+      # ------------------------------------------------------
+
+      DEBEZIUM_SOURCE_CONNECTOR_CLASS: io.debezium.connector.mysql.MySqlConnector
+
+      # 容器内部通过 Compose 服务名 mysql 访问数据库。
+      DEBEZIUM_SOURCE_DATABASE_HOSTNAME: mysql
+      DEBEZIUM_SOURCE_DATABASE_PORT: "3306"
+
+      # 使用专门的 Debezium 复制账户，不能使用业务账户。
+      DEBEZIUM_SOURCE_DATABASE_USER: ${DEBEZIUM_MYSQL_USER}
+      DEBEZIUM_SOURCE_DATABASE_PASSWORD: ${DEBEZIUM_MYSQL_PASSWORD}
+
+      # Debezium 作为 MySQL 复制客户端使用的唯一 Server ID。
+      DEBEZIUM_SOURCE_DATABASE_SERVER_ID: ${DEBEZIUM_MYSQL_SERVER_ID}
+
+      # Debezium 生成事件流名称时使用的前缀。
+      DEBEZIUM_SOURCE_TOPIC_PREFIX: epf
+
+      # 只监听认证数据库。
+      DEBEZIUM_SOURCE_DATABASE_INCLUDE_LIST: ${IDENTITY_MYSQL_DATABASE}
+
+      # 只监听 Outbox 表，避免把用户密码、Token 等敏感表发布出去。
+      DEBEZIUM_SOURCE_TABLE_INCLUDE_LIST: ${IDENTITY_MYSQL_DATABASE}.outbox_event
+
+      # 没有 Offset 或原 Binlog 已失效时自动执行快照。
+      DEBEZIUM_SOURCE_SNAPSHOT_MODE: when_needed
+
+      # 不将数据库 DDL 变更作为普通业务事件发布。
+      DEBEZIUM_SOURCE_INCLUDE_SCHEMA_CHANGES: "false"
+
+
+      # ------------------------------------------------------
+      # Offset Store：把 Binlog 读取进度存入 Redis
+      #
+      # 保存内容包括：
+      # 1. Binlog 文件名
+      # 2. Binlog 读取位置
+      # 3. 当前快照状态
+      # ------------------------------------------------------
+
+      DEBEZIUM_SOURCE_OFFSET_STORAGE: io.debezium.storage.redis.offset.RedisOffsetBackingStore
+      DEBEZIUM_SOURCE_OFFSET_STORAGE_REDIS_ADDRESS: redis:6379
+      DEBEZIUM_SOURCE_OFFSET_STORAGE_REDIS_KEY: epf:debezium:identity:offsets
+
+      # 每秒持久化一次 Offset。
+      #
+      # 发生“消息已发送，但 Offset 尚未保存”时，
+      # 重启后可能再次发送，因此消费者仍需按 eventId 幂等。
+      DEBEZIUM_SOURCE_OFFSET_FLUSH_INTERVAL_MS: "1000"
+
+
+      # ------------------------------------------------------
+      # Schema History：将 MySQL 表结构历史保存到 RocketMQ
+      #
+      # MySQL Binlog 只保存数据变化，Debezium 还需要知道各列含义，
+      # 因此必须持久化表结构历史。
+      # ------------------------------------------------------
+
+      DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL: io.debezium.storage.rocketmq.history.RocketMqSchemaHistory
+
+      # 该 Topic 是 Debezium 内部技术 Topic，不是业务事件 Topic。
+      DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL_ROCKETMQ_TOPIC: epf.identity.schema-history
+
+      DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL_ROCKETMQ_NAME_SRV_ADDR: rocketmq-namesrv:9876
+      DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL_ROCKETMQ_ACL_ENABLED: "false"
+
+
+      # ------------------------------------------------------
+      # 消息序列化格式
+      #
+      # 使用无 Schema JSON，减少消息体积并方便 Java 消费。
+      # ------------------------------------------------------
+
+      DEBEZIUM_FORMAT_KEY: json
+      DEBEZIUM_FORMAT_KEY_SCHEMAS_ENABLE: "false"
+
+      DEBEZIUM_FORMAT_VALUE: json
+      DEBEZIUM_FORMAT_VALUE_SCHEMAS_ENABLE: "false"
+
+
+      # ------------------------------------------------------
+      # Debezium Server 管理端口
+      # ------------------------------------------------------
+
+      QUARKUS_HTTP_PORT: "8080"
+
+    # 仅将管理端口映射到本机。
+    # Windows 访问：http://localhost:${DEBEZIUM_SERVER_HOST_PORT}
+    ports:
+      - "127.0.0.1:${DEBEZIUM_SERVER_HOST_PORT}:8080"
+
+    networks:
+      - everypicfound-network
+
+
+  # ==========================================================
+  # Identity Service：认证与用户服务
+  #
+  # Outbox 模式下，Identity 只负责：
+  # 1. 更新认证业务表
+  # 2. 在同一 MySQL 事务内写入 outbox_event
+  #
+  # Identity 不直接连接 RocketMQ。
+  # RocketMQ 发布由 Debezium Server 负责。
+  # ==========================================================
+  identity-service:
+    build:
+      context: .
+      dockerfile: identity-service/Dockerfile
+      args:
+        JAR_FILE: identity-service/target/identity-service-0.0.1-SNAPSHOT.jar
+
+    container_name: everypicfound-identity-service
+    restart: unless-stopped
+
+    environment:
+      # 容器内部统一使用 8080。
+      SERVER_PORT: 8080
+
+      # Identity 使用独立的 identity_db。
+      SPRING_DATASOURCE_URL: >-
+        jdbc:mysql://mysql:3306/${IDENTITY_MYSQL_DATABASE}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+
+      # Redis 用于认证状态、失败计数和后续屏障数据。
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+    # Identity 不再依赖 RocketMQ。
+    # 只要 MySQL 和 Redis 可用，认证服务即可启动。
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    # 仅在 Docker 网络内提供服务。
+    # Gateway 通过 identity-service:8080 访问。
+    expose:
+      - "8080"
+
+    # Dockerfile 需要安装 curl。
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail --silent http://localhost:8080/actuator/health > /dev/null"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 40s
+
+    networks:
+      - everypicfound-network
+
+
+  # ==========================================================
+  # Media Search Service：图片上传、向量化与搜索服务
+  #
+  # 外部依赖：
+  # 1. MySQL
+  # 2. Redis
+  # 3. Qdrant
+  # 4. 宿主机 Python Model Service
+  # ==========================================================
+  media-search-service:
+    build:
+      context: .
+      dockerfile: media-search-service/Dockerfile
+      args:
+        JAR_FILE: media-search-service/target/media-search-service-0.0.1-SNAPSHOT.jar
+
+    container_name: everypicfound-media-search-service
+    restart: unless-stopped
+
+    environment:
+      SERVER_PORT: 8080
+
+      # Media 继续使用原 everypicfound 数据库。
+      SPRING_DATASOURCE_URL: >-
+        jdbc:mysql://mysql:3306/${MEDIA_MYSQL_DATABASE}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+      # Java Qdrant Client 使用 gRPC 6334。
+      EVERYPICFOUND_VECTOR_INDEX_QDRANT_HOST: qdrant
+      EVERYPICFOUND_VECTOR_INDEX_QDRANT_PORT: 6334
+
+      # Python 模型服务暂时运行在 Windows 宿主机。
+      EVERYPICFOUND_MODEL_CLIENT_BASE_URL: http://host.docker.internal:8001
+
+    # 在 Linux Docker 环境中补充宿主机网关映射。
+    # Docker Desktop 通常已经内置该名称。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+      # Qdrant 当前没有配置健康检查，
+      # 所以只能等待容器进程启动。
+      qdrant:
+        condition: service_started
+
+    expose:
+      - "8080"
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail --silent http://localhost:8080/actuator/health > /dev/null"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+
+    # 图片和日志不能只保存在容器可写层。
+    volumes:
+      - media-images:/app/data/images
+      - media-logs:/app/logs
+
+    networks:
+      - everypicfound-network
+
+
+  # ==========================================================
+  # Gateway Service：统一外部入口
+  #
+  # Gateway 根据请求路径转发到：
+  # 1. identity-service
+  # 2. media-search-service
+  #
+  # 三个 Java 服务中，只有 Gateway 对宿主机暴露端口。
+  # ==========================================================
+  gateway-service:
+    build:
+      context: .
+      dockerfile: gateway-service/Dockerfile
+      args:
+        JAR_FILE: gateway-service/target/gateway-service-0.0.1-SNAPSHOT.jar
+
+    container_name: everypicfound-gateway-service
+    restart: unless-stopped
+
+    environment:
+      SERVER_PORT: 8080
+
+      # application.yaml 中的 Gateway Route 会读取这两个变量。
+      IDENTITY_SERVICE_URI: http://identity-service:8080
+      MEDIA_SEARCH_SERVICE_URI: http://media-search-service:8080
+
+    # 只有两个下游服务健康后，Gateway 才开始创建。
+    depends_on:
+      identity-service:
+        condition: service_healthy
+
+      media-search-service:
+        condition: service_healthy
+
+    # 系统统一对外访问入口。
+    ports:
+      - "${GATEWAY_HOST_PORT}:8080"
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail --silent http://localhost:8080/actuator/health > /dev/null"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+    networks:
+      - everypicfound-network
+
+
+# ============================================================
+# Docker 内部网络
+#
+# Bridge 网络会自动提供服务名 DNS：
+# mysql、redis、qdrant、identity-service 等服务名都可作为主机名。
+# ============================================================
+networks:
+  everypicfound-network:
+    name: everypicfound-network
+    driver: bridge
+
+
+# ============================================================
+# 数据卷
+#
+# external=true：
+# 表示该卷已经存在，由当前 Compose 外部管理。
+# Compose 不负责创建，卷不存在时会直接报错。
+#
+# 其他空声明卷由 Compose 自动创建并管理。
+# ============================================================
+volumes:
+
+  # 原 media-search-service Compose 创建的 MySQL 卷。
+  mysql-data:
+    external: true
+    name: ${MYSQL_DATA_VOLUME}
+
+  # 原 media-search-service Compose 创建的 Qdrant 卷。
+  qdrant-data:
+    external: true
+    name: ${QDRANT_DATA_VOLUME}
+
+  # Redis AOF 数据。
+  redis-data:
+
+  # RocketMQ NameServer 日志。
+  rocketmq-namesrv-logs:
+
+  # RocketMQ Broker 日志。
+  rocketmq-broker-logs:
+
+  # RocketMQ Broker 的 CommitLog、ConsumeQueue 和索引数据。
+  rocketmq-broker-store:
+
+  # Media 上传图片。
+  media-images:
+
+  # Media 日志。
+  media-logs:

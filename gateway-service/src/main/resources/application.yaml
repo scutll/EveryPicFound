@@ -2,8 +2,38 @@ spring:
   application:
     name: gateway-service
 
+  cloud:
+    gateway:
+      routes:
+        - id: identity-auth-route
+          uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+          predicates:
+          - Path=/api/auth/**
+
+        - id: identity-user-route
+          uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+          predicates:
+            - Path=/api/users/**
+
+        - id: identity-session-route
+          uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+          predicates:
+            - Path=/api/sessions/**
+
+        - id: media-search-route
+          uri: ${MEDIA_SEARCH_SERVICE_URI:http://localhost:8080}
+          predicates:
+            - Path=/api/search/**
+
+        - id: media-image-route
+          uri: ${MEDIA_SEARCH_SERVICE_URI:http://localhost:8080}
+          predicates:
+            - Path=/api/images/**,/images/**
+
+
+
 server:
-  port: 8082
+  port: ${SERVER_PORT:8082}
 
 management:
   endpoints:
@@ -12,3 +42,7 @@ management:
         include:
           - health
           - info
+
+  endpoint:
+    health:
+      show-details: always

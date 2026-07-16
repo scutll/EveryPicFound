@@ -24,3 +24,10 @@ everypicfound:
   auth:
     password:
       bcrypt-strength: ${EPF_BCRYPT_STRENGTH:14}
+    jwt:
+      issuer: ${EPF_JWT_ISSUER:everypicfound-identity}
+      audience: ${EPF_JWT_AUDIENCE:everypicfound-api}
+      access-token-ttl: ${EPF_JWT_ACCESS_TOKEN_TTL:30m}
+      clock-skew: ${EPF_JWT_CLOCK_SKEW:30s}
+      private-key-location: ${EPF_JWT_PRIVATE_KEY_LOCATION:file:./config/keys/identity-private.pem}
+      public-key-location: ${EPF_JWT_PUBLIC_KEY_LOCATION:file:./config/keys/identity-public.pem}

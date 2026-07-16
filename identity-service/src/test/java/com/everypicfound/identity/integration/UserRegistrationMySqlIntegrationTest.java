@@ -6,6 +6,7 @@ import com.everypicfound.identity.domain.model.user.UserAccount;
 import com.everypicfound.identity.domain.model.user.Username;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
 import com.everypicfound.identity.domain.repository.UserRepository;
+import com.everypicfound.identity.support.security.TestRsaKeyMaterial;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,9 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -48,6 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         matches = "true")
 class UserRegistrationMySqlIntegrationTest {
 
+    private static final JwtTestKeys JWT_TEST_KEYS = createJwtTestKeys();
     private static final Instant REGISTERED_AT =
             Instant.parse("2026-07-16T08:00:00.123456Z");
     private static final LocalDateTime STORED_AT =
@@ -76,6 +81,12 @@ class UserRegistrationMySqlIntegrationTest {
         registry.add(
                 "everypicfound.auth.password.bcrypt-strength",
                 () -> "4");
+        registry.add(
+                "everypicfound.auth.jwt.private-key-location",
+                () -> JWT_TEST_KEYS.privateKey().toUri().toString());
+        registry.add(
+                "everypicfound.auth.jwt.public-key-location",
+                () -> JWT_TEST_KEYS.publicKey().toUri().toString());
     }
 
     @Autowired
@@ -329,6 +340,24 @@ class UserRegistrationMySqlIntegrationTest {
                             + name);
         }
         return value;
+    }
+
+    private static JwtTestKeys createJwtTestKeys() {
+        try {
+            Path directory = Files.createTempDirectory("everypicfound-jwt-test-");
+            var keyPair = TestRsaKeyMaterial.generate(2048);
+            Path privateKey = TestRsaKeyMaterial.writePrivateKey(directory, "private.pem", keyPair);
+            Path publicKey = TestRsaKeyMaterial.writePublicKey(directory, "public.pem", keyPair);
+            privateKey.toFile().deleteOnExit();
+            publicKey.toFile().deleteOnExit();
+            directory.toFile().deleteOnExit();
+            return new JwtTestKeys(privateKey, publicKey);
+        } catch (IOException exception) {
+            throw new ExceptionInInitializerError(exception);
+        }
+    }
+
+    private record JwtTestKeys(Path privateKey, Path publicKey) {
     }
 
     private record PersistedAccountRow(

@@ -123,7 +123,7 @@ Base64Url(Signature)
 |---|---|
 | `typ` | Token 类型 |
 | `alg` | 签名算法 |
-| `kid` | 可选密钥标识，用于公钥选择和密钥轮换；当前项目在 JWT 签发切片再确认是否加入及其轮换规则 |
+| `kid` | 可选密钥标识，用于公钥选择和密钥轮换；当前 I-02 单密钥 Token 不携带该字段，等 JWK Set 与多密钥轮换切片再加入 |
 
 微服务系统推荐使用非对称签名：
 
@@ -137,7 +137,7 @@ Gateway 和业务服务：
 
 业务服务只有公钥，可以验签但不能伪造 Token。
 
-当前密钥基线为 RS256、RSA 2048 位、PKCS#8 PEM 私钥和 X.509 PEM 公钥。开发密钥在本地生成，通过外部路径配置注入并禁止提交 Git；测试使用独立密钥。
+当前密钥基线为 RS256、RSA 至少 2048 位、PKCS#8 PEM 私钥和 X.509 PEM 公钥。开发密钥在本地生成，通过 Spring `Resource` 外部路径配置注入并禁止提交 Git；测试动态生成独立 KeyPair 并使用临时 PEM 文件。启动时必须验证 PEM 类型、RSA 位数和公私钥匹配，配置异常不得输出密钥正文。
 
 ### 1.4.2 Payload
 
@@ -145,12 +145,12 @@ Gateway 和业务服务：
 
 ```json
 {
-  "iss": "https://auth.example.internal",
-  "aud": ["example-api"],
+  "iss": "everypicfound-identity",
+  "aud": ["everypicfound-api"],
   "sub": "10001",
-  "jti": "01JACCESS001",
-  "sid": "01JSESSION001",
-  "scope": "image:search image:upload",
+  "jti": "550e8400-e29b-41d4-a716-446655440000",
+  "sid": "session-001",
+  "scope": "image:read image:search",
   "auth_time": 1783814400,
   "iat": 1783814700,
   "nbf": 1783814700,
@@ -173,11 +173,31 @@ Gateway 和业务服务：
 
 Payload 只是编码，不等于加密，不能放入密码、Refresh Token、敏感资料或实时额度。
 
+EveryPicFound I-02 对字段格式进一步固定：`sub` 是用户 `BIGINT` ID 的十进制字符串；`sid` 是不绑定数据库主键类型的字符串；`jti` 由签发器生成随机 UUID；`scope` 去重并稳定排序后用单个空格连接；`auth_time、iat、nbf、exp` 使用 NumericDate 秒，且 `nbf=iat`、`exp=iat+30min`。Issuer 和 Audience 默认分别为 `everypicfound-identity` 与 `everypicfound-api`，并允许通过外部配置覆盖。
+
 ### 1.4.3 Signature
 
 Signature 用于验证 Header 和 Payload 是否被篡改，并证明 Token 来自可信签发者。
 
 JWT 签名提供完整性和来源校验，不负责隐藏 Payload。
+
+### 1.4.4 当前项目的 I-02 签发与验签边界
+
+I-02 只建立应用内部 Token 请求与签发链路，不提供允许客户端自行指定用户身份的临时 HTTP Token 接口：
+
+```text
+未来 LoginUseCase
+→ AccessTokenIssuer
+→ Spring JOSE JwtEncoder
+→ RS256 私钥签名
+→ 返回 Token 与 expiresAt
+
+Spring JOSE JwtDecoder
+→ RSA 公钥验签
+→ 校验 issuer、audience、nbf、exp 和 30 秒 Clock Skew
+```
+
+应用层请求只含 `userId、sessionId、scopes、authTime`，不能传入或覆盖 `iss、aud、jti、iat、nbf、exp`。I-02 直接依赖 `spring-security-oauth2-jose`，不提前引入 Resource Server Starter；Decoder 作为可复用基础设施 Bean 存在，等 Security FilterChain 出现真实消费者时再接入。
 
 ---
 

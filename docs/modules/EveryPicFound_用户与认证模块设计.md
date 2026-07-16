@@ -1392,12 +1392,12 @@ everypicfound:
       bcrypt-strength: ${EPF_BCRYPT_STRENGTH:14}
 
     jwt:
-      issuer: everypicfound-identity
-      audience: everypicfound-api
-      access-token-ttl: 30m
-      clock-skew: 30s
-      private-key-location: ${EPF_JWT_PRIVATE_KEY}
-      public-key-location: ${EPF_JWT_PUBLIC_KEY}
+      issuer: ${EPF_JWT_ISSUER:everypicfound-identity}
+      audience: ${EPF_JWT_AUDIENCE:everypicfound-api}
+      access-token-ttl: ${EPF_ACCESS_TOKEN_TTL:30m}
+      clock-skew: ${EPF_JWT_CLOCK_SKEW:30s}
+      private-key-location: ${EPF_JWT_PRIVATE_KEY_LOCATION:file:./secrets/access-token-private.pem}
+      public-key-location: ${EPF_JWT_PUBLIC_KEY_LOCATION:file:./secrets/access-token-public.pem}
 
     refresh-token:
       ttl: 1h
@@ -1408,9 +1408,11 @@ everypicfound:
 
 密码切片只引入 `spring-security-crypto`，不提前加入会建立 HTTP 安全过滤链的完整 Security Starter。`PasswordHashProperties` 校验 strength 必须位于 4～31；当前 `DelegatingPasswordEncoder` 的编码 ID 和唯一映射均为 `bcrypt`，不提供 `noop` 回退。生产 strength 来自本机基准并可由环境变量覆盖；普通单元测试使用低 strength，避免安全成本拖慢测试套件。
 
-JWT 签名基线为 RS256、RSA 2048 位、PKCS#8 PEM 私钥和 X.509 PEM 公钥。开发密钥由本地生成并通过外部路径配置注入，不提交 Git；测试使用独立密钥。
+JWT 签名基线为 RS256、RSA 至少 2048 位、PKCS#8 PEM 私钥和 X.509 PEM 公钥。开发密钥由本地生成并通过 Spring `Resource` 外部路径注入，不提交 Git；测试动态生成独立 KeyPair 并写入临时目录。启动时校验 PEM 类型、RSA 位数和公私钥匹配，失败信息不得输出密钥正文。
 
-`kid` 与密钥轮换、Refresh Token 滑动语义、Cookie/CSRF、Refresh Token 敏感配置、登录保护阈值、Redis TTL 和 Outbox Relay/CDC 方式均在对应编码切片讨论并补充文档，当前配置示例不得为这些未确认事项提供默认实现。
+I-02 使用单把公私钥，JWT Header 固定 `alg=RS256、typ=JWT` 且不携带可选 `kid`；JWK Set 与多密钥轮换出现真实用例时再补充 `kid` 生成、旧公钥保留和选择规则。Refresh Token 滑动语义、Cookie/CSRF、Refresh Token 敏感配置、登录保护阈值、Redis TTL 和 Outbox Relay/CDC 方式仍在对应编码切片讨论，当前配置示例不得为这些未确认事项提供默认实现。
+
+I-02 不开放临时 Token HTTP 接口。未来登录用例通过应用层出站端口 `AccessTokenIssuer` 传入 `userId、sessionId、scopes、authTime`；基础设施适配器自行生成 `jti、iat、nbf、exp` 并返回 Token 与准确过期时间。生产配置提供可复用的 `JwtDecoder` Bean，但在 Resource Server 切片前不建立没有消费者的 `AccessTokenVerifier` 端口或 Security FilterChain。
 
 配置类建议：
 
@@ -1436,8 +1438,8 @@ Gateway 和搜图服务只配置 JWT 公钥与 `issuer`、`audience`；只有认
 
 ```text
 Spring Boot Web
-Spring Security
-OAuth2 Resource Server / JOSE
+Spring Security Crypto
+Spring Security OAuth2 JOSE
 Spring Validation
 MyBatis-Plus
 MySQL Driver
@@ -1457,6 +1459,8 @@ Actuator + Micrometer
 ```
 
 Gateway 使用 WebFlux，不能和当前基于 `spring-boot-starter-web` 的 MVC 搜图服务混为同一个启动应用。认证服务可使用 Spring MVC；搜图服务继续保持现有 MVC 模式。
+
+I-02 只直接加入 `spring-security-oauth2-jose`，不提前加入 Resource Server Starter；建立受保护接口安全链时再引入完整 Resource Server 能力，避免当前注册接口被未设计的默认过滤链改变。
 
 ### 2.10.3 服务间信任
 

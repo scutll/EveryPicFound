@@ -27,7 +27,8 @@
 | Fixture、Builder、Mock 数据和重复测试样板 | Codex 生成 | 不在生产代码中加入仅供测试使用的方法 |
 | 集成测试、并发测试和故障场景 | 共同完成 | 用户先说明预期，Codex 协助搭建和核验 |
 | 日志、指标、性能结果和故障输出分析 | 用户先分析 | Codex 基于证据补充，不直接跳到修复 |
-| Linux 与 Git 操作 | 用户实际执行 | Codex 解释命令、预期结果和风险 |
+| Linux 与基础设施观察 | 用户实际执行 | Codex 解释命令、预期结果和风险，用户先分析输出 |
+| Git 基础收口 | Codex 执行 | Codex 负责 status、diff、选择性暂存、staged review 和当前切片提交；push、合并与历史重写仍需用户确认 |
 
 用户可以明确说“直接实现”来临时授权 Codex 编写核心代码；未获得该指令时，核心学习任务默认由用户先尝试。
 
@@ -46,7 +47,7 @@
 9. **目标验证**：优先运行当前切片的目标测试；首次使用 MySQL、Redis 或 RocketMQ 时才增加对应集成验证。
 10. **观测与排障**：检查一次成功路径和一次失败路径的日志、指标或基础设施状态，并由用户先解释结果。
 11. **Linux 练习**：每个切片至少练习一组与当前功能直接相关的命令。
-12. **Git 收口**：用户执行 `status → diff → stage → staged diff → commit`，并说明提交边界和提交信息。
+12. **Git 收口**：Codex 执行 `status → diff → stage → staged diff → commit` 并报告边界；push、合并与历史重写另行确认。
 13. **学习复盘**：记录本次掌握内容、失败原因、使用命令和仍需复习的问题。
 
 为减少不必要的对话往返，编码阶段采用“批量讲解、组内 TDD、批次 Review”的沟通粒度：Codex 一次说明一个领域对象或一个小型组件的完整行为矩阵、所需 API/注解、测试结构和参考实现；用户在本地仍按测试先行顺序观察 RED 与 GREEN，但无需逐个测试回传，完成整组后统一提交代码和测试输出供 Review。涉及新技术决策、失败原因不明或需要改变边界时，才暂停批次继续讨论。
@@ -71,7 +72,7 @@
 - 服务排障：使用 `ps`、`ss`、`top`、`tail`、`grep`、`docker logs`、`docker exec` 等命令定位进程、端口和日志。
 - Git：练习小提交、选择性暂存、提交历史、分支、冲突与回归定位。
 
-Codex 在给出命令前必须说明用途、预期输出和风险；用户执行后先解释观察结果。Codex 不主动执行 `commit`、`push`、合并、历史重写或破坏性 Git 操作，除非用户明确授权。
+Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、预期输出和风险；用户执行后先解释观察结果。用户已授权 Codex 处理当前切片的基础 Git 收口，包括选择性暂存、staged review 和创建提交；`push`、合并、历史重写和破坏性 Git 操作仍需单独明确授权。
 
 ### 0.6 Codex 必须遵守的行为边界
 
@@ -84,7 +85,7 @@ Codex 在给出命令前必须说明用途、预期输出和风险；用户执�
 - 保留工作区中用户已有的改动，不覆盖、不回滚、不顺手整理无关文件。
 - 诊断失败时先收集错误输出、日志和最小复现，再判断原因；不靠猜测连续试改。
 - 不用健康检查代替启动命令验证，不在 Windows 上临时拼接未经验证的后台启动命令。
-- 未经用户明确授权，不创建 Git 提交、推送远端、修改历史或执行破坏性命令。
+- 当前切片完成并通过验证后，可以创建范围清晰的本地 Git 提交；未经用户明确授权，不推送远端、合并、修改历史或执行破坏性命令。
 
 ### 0.7 当前切片任务卡模板
 
@@ -114,7 +115,7 @@ Codex 在给出命令前必须说明用途、预期输出和风险；用户执�
 **Git**
 - [ ] 检查工作区和差异
 - [ ] 选择性暂存并检查 staged diff
-- [ ] 用户确认提交信息后执行提交
+- [ ] Codex 创建当前切片的本地提交并报告提交号
 
 **复盘**
 - 掌握内容：
@@ -149,12 +150,12 @@ Codex 在给出命令前必须说明用途、预期输出和风险；用户执�
 ## 一、现状与进度判断
 
   - **准备阶段最小收口已完成**：父 Maven 工程、`identity-service`、`gateway-service`、`media-search-service`、`security-contract`、启动类、Dockerfile、基础路由、版本约束和编码准入边界已经落地。
-  - **包结构已基本搭好，但尚未进入业务编码**：`identity-service` 目前除启动类外主要是 53 个 `package-info.java`；Gateway 同样只有骨架；Media 的安全模块也只有包占位。
-  - **公共契约仅有初稿**：JWT Claim、Scope 和 `UserAuthStateResponse` 已存在，但仍需在首次真实调用前结合接口信息结构重新确认，不能视为稳定 API。
-  - **业务能力尚未开始**：没有用户、Session、Refresh Token、Outbox 表，没有 Redis 认证 Key/Lua，没有 RSA 密钥，没有 RocketMQ 业务 Topic，也没有注册、登录、刷新、退出等实现。
+  - **用户注册纵向切片已经完成**：`identity-service` 已具备用户领域规则、Flyway V1、MyBatis-Plus 持久化、BCrypt、注册应用用例、`POST /api/auth/register` 和分层测试，并由提交 `d1feabb` 独立收口。
+  - **公共安全契约仍需按真实消费者演进**：当前已有 Claim 名称、Scope 和 `UserAuthStateResponse` 初稿；I-02 先确认 Access Token Claim 格式，JWK Set、事件和其他契约等出现真实消费者时再稳定。
+  - **认证业务尚未汇合**：没有登录、Session、Refresh Token、Redis 认证 Key/Lua、JWK Set、Outbox 或 RocketMQ 业务 Topic；当前开始 I-02 Access Token 内部签发与验签基础切片。
   - **Compose 已超前配置**：RocketMQ、Debezium、CDC、MySQL Binlog 等已经写入，但未运行、未验证，也不作为后续编码的既定方案。RocketMQ Broker 已关闭自动建 Topic，符合“实际使用时再建立”的原则。
-  - **当前工作区存在未提交骨架改动**，正式编码前应先确认并独立保存这些基础结构，避免和首个业务切片混在一起。
-  - 准备阶段收口未运行 Docker、全量 Maven 构建或旧测试；进入编码阶段后按当前纵向切片执行目标验证。
+  - **当前工作区仍存在未提交的准备阶段文档迁移和包骨架改动**；每个功能切片继续通过选择性暂存隔离，不把空骨架误算为已实现能力。
+  - I-01 已在 Docker MySQL 8.0.46 上完成 90 项相关测试；I-02 不依赖 Docker，按固定 Clock 和动态 RSA 测试密钥执行纯本地目标验证。
 
   ## 二、模块协作原则
 
@@ -196,10 +197,10 @@ Codex 在给出命令前必须说明用途、预期输出和风险；用户执�
   - [x] **D12 注册其余错误契约**：用户名重复返回 HTTP 409、`USER_USERNAME_ALREADY_EXISTS`、`field=username`；密码哈希失败、数据库失败等客户端无法处理的内部故障统一返回 HTTP 500、`SYSTEM_INTERNAL_ERROR`、`field=null`。服务端依靠异常类型和日志区分内部原因，不向客户端暴露 BCrypt、MySQL 或堆栈细节。
   - [x] **D13 依赖引入**：依赖只在当前编码切片首次真实使用时加入，不一次性补齐后续依赖。
   - [x] **D14 数据库验证**：使用现有 Docker MySQL 建表和执行集成测试，不引入 H2 或 Testcontainers。
-  - [ ] **D15 JWT Claim 契约**：遵循 IETF JWT/JWS/JWK 规范；保留 `nbf` 且首版令 `nbf = iat`，其余字段在 Token 切片开始前逐项核对。
+  - [x] **D15 JWT Claim 契约**：Access Token 固定 `iss=everypicfound-identity`、`aud=everypicfound-api`，两者均允许外部配置覆盖；`sub` 是用户 `BIGINT` ID 的十进制字符串，`sid` 是不绑定数据库主键类型的字符串，`jti` 是签发器生成的随机 UUID 字符串，`scope` 是去重并稳定排序后的空格分隔字符串，`auth_time、iat、nbf、exp` 使用 JWT NumericDate 秒；首版固定 `nbf=iat`、`exp=iat+30min`。
   - [x] **D16 时间参数**：Access Token TTL 30 分钟、Refresh Token TTL 1 小时、Session 绝对 TTL 1 天、Clock Skew 30 秒；Refresh Token 是否采用滑动到期在轮换设计时再确认。
   - [x] **D17 RSA 密钥基线**：RS256、RSA 2048 位、PKCS#8 PEM 私钥、X.509 PEM 公钥；开发密钥在本地生成且不提交 Git，路径由外部配置注入，测试使用独立密钥。
-  - [ ] **D18 `kid` 与密钥轮换**：延期到 JWT 签发切片，在讲解签名、验签、JWK Set 和轮换流程后确认，不能直接按默认值编码。
+  - [x] **D18 `kid` 与密钥轮换**：I-02 只有单把公私钥，Header 固定 `alg=RS256、typ=JWT` 且不加入可选 `kid`；等 JWK Set 与多密钥轮换出现真实用例时再设计 `kid` 生成、旧公钥保留期和选择规则，不提前引入 JWK Thumbprint。
   - [ ] **D19～D21 Refresh Token、Cookie/CSRF 与敏感配置**：进入对应 Token 切片后逐项讨论。
   - [x] **D22 首版账户表边界**：采用单张 `user_account`，字段限定为 `id、username、password_hash、nickname、avatar_url、status、auth_valid_after、last_login_time、version、created_time、updated_time`；本阶段不拆分 `user_profile`，也不提前加入 `deleted_time、email、phone` 等尚无当前用例的字段，后续真实需要时再通过 Flyway 迁移增加。
   - [x] **D23 用户名数据库语义**：`username` 使用 `VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL`，唯一索引据此区分大小写；应用层仍执行 D02 的格式校验，数据库字符集和 Collation 作为第二层约束。该长度同时覆盖最长合法注册用户名和内部注销占位值 `#deleted#<userId>`。
@@ -217,6 +218,14 @@ Codex 在给出命令前必须说明用途、预期输出和风险；用户执�
   - [x] **D35 账户持久化适配**：使用项目既定的 MyBatis-Plus `BaseMapper` 完成当前注册切片的简单存在性查询和插入，不建立 Mapper XML、`IService` 或 `ServiceImpl`。应用层只依赖最小 `UserRepository` 端口；基础设施层使用 `UserAccountPo`、UTC Converter、`UserAccountMapper` 和 `MyBatisUserRepository`。自增 ID 由 MyBatis-Plus 回填到 PO，Repository 返回生成的 ID，不为不可变领域对象增加 setter。
   - [x] **D36 BCrypt 与注册用例**：当前只引入 `spring-security-crypto`，不提前启用完整 Security Starter。2026-07-16 在当前 Java 24 Maven 运行环境串行测得 strength 10～14 的验证中位数为 47、100、191、381、695 ms，选择测试范围内最高且低于约 1 秒目标的 strength 14，并允许通过 `EPF_BCRYPT_STRENGTH` 覆盖。使用只注册 `bcrypt` 的 `DelegatingPasswordEncoder` 保存 `{bcrypt}` 前缀；`RegisterUserService` 在事务外完成校验、查重和哈希，独立 `UserAccountRegistrationTransaction` 只包围账户 INSERT，避免 BCrypt 期间占用数据库事务。
 
+  - [x] **D37 I-02 边界**：只建立未来登录用例调用的内部 Access Token 请求与签发链路，以及可复用的生产 `JwtDecoder` Bean；不开放临时 Token HTTP 接口，不创建 Session、Refresh Token、FilterChain、JWK Set、数据库表、Redis、RocketMQ 或 Outbox 对象。
+  - [x] **D38 JOSE 依赖**：I-02 只加入 Spring Boot BOM 管理的 `spring-security-oauth2-jose`，使用 Spring `JwtEncoder/JwtDecoder` 抽象；不提前加入会扩大 HTTP 安全边界的 Resource Server Starter，也不让应用层直接依赖 Nimbus 类型。
+  - [x] **D39 RSA 密钥加载**：私钥和公钥分别通过 Spring `Resource` 路径注入，生产默认读取 Git 管理范围外的 `file:./secrets/access-token-private.pem` 与 `file:./secrets/access-token-public.pem`；启动时校验 PKCS#8/X.509 PEM、RSA 类型、至少 2048 位和公私钥匹配。测试动态生成独立 KeyPair 并写入临时目录，不提交测试私钥。
+  - [x] **D40 签发端口**：应用层通过 `AccessTokenIssuer.issue(AccessTokenIssueRequest)` 请求签发，输入只含 `userId、sessionId、scopes、authTime`；Issuer 自行读取一次 `Clock`、生成 `jti` 并计算时间 Claim，返回隐藏 Token `toString()` 的 `IssuedAccessToken(tokenValue, expiresAt)`。应用层不接触 Spring `Jwt` 或具体 JOSE 库。
+  - [x] **D41 验签边界**：I-02 配置生产 `JwtDecoder` Bean，固定只接受 RS256，并组合验证签名、Issuer、Audience、`nbf/exp` 与 30 秒 Clock Skew；当前没有真实应用消费者，因此不创建 `AccessTokenVerifier` 端口，后续 Resource Server FilterChain 直接复用 Decoder。
+  - [x] **D42 失败与敏感信息**：配置缺失、PEM 错误、弱 RSA 或密钥不匹配时启动快速失败，错误只指出配置项或资源位置，不输出密钥内容；非法签发输入在签名之前拒绝；JOSE 编码失败转换为不泄漏框架类型和 Token 原文的 `AccessTokenIssuanceException`。当前没有 HTTP 入口，因此不新增客户端错误码。
+  - [x] **D43 Token 测试结构**：采用固定 `Clock`、动态 RSA KeyPair 和 JUnit 临时目录完成纯本地测试，覆盖请求规则、PEM 加载、Header/Claim、唯一 `jti`、Scope 规范化、错误密钥、篡改、Issuer/Audience、过期、尚未生效和 30 秒偏移；测试不依赖 MySQL、Redis、RocketMQ 或 Docker，已有完整 Spring 上下文测试注入动态测试密钥。
+
 **用户线：注册纵向切片**
 
 - D01～D33 已完成用户 ID、用户名/昵称/密码规则、账户字段、UTC 时间、状态、索引、Flyway、注册契约与测试边界确认；实现以这些决策为准。
@@ -225,7 +234,7 @@ Codex 在给出命令前必须说明用途、预期输出和风险；用户执�
 - 实现用户领域模型、Repository、MyBatis 适配、密码摘要和 `POST /api/auth/register`。
 - 不创建 Session、Refresh Token、Redis Key、Outbox、Topic 或用户创建事件。
 
-#### 任务：I-01 用户注册纵向切片（进行中）
+#### 任务：I-01 用户注册纵向切片（已完成）
 
 **学习目标**
 
@@ -240,7 +249,7 @@ Codex 在给出命令前必须说明用途、预期输出和风险；用户执�
 - [x] **I-01.3 Repository 与 MyBatis**：按 D35 使用 MyBatis-Plus `BaseMapper`；已完成最小仓储端口、PO、UTC Converter、Mapper、Repository 适配器和测试，没有创建 Mapper XML；唯一约束异常先转换为稳定业务异常，HTTP 错误契约留到注册失败分支。
 - [x] **I-01.4 BCrypt 与注册用例**：已完成 BCrypt 本机基准、密码端口与适配器、受保护注册命令、`RegisterUserUseCase`、公开结果和短事务写入；注册只创建账户，不创建任何认证状态。
 - [x] **I-01.5 HTTP 契约**：已实现 `POST /api/auth/register` 的 Request/Response、Controller、错误映射和 MockMvc 契约测试；D11/D12 已在失败分支编码前完成决策。
-- [ ] **I-01.6 集成验收与收口**：Docker MySQL 集成测试和成功/失败路径观测已完成；还剩用户主导的 Git 状态检查、选择性暂存与提交收口。
+- [x] **I-01.6 集成验收与收口**：Docker MySQL 集成测试、成功/失败路径观测、选择性暂存和独立提交 `d1feabb` 均已完成。
 
 **已完成子任务：I-01.1 领域规则与注册初始状态**
 
@@ -394,9 +403,66 @@ Codex 在给出命令前必须说明用途、预期输出和风险；用户执�
 
   **认证线：Token 基础能力**
 
-  - 已确认 JWT/Session/Refresh TTL、Clock Skew 与 RSA 密钥基线；开始该切片时再确认 `kid`/密钥轮换/JWK Set、Refresh Token Pepper、滑动语义、Cookie 与 CSRF/Origin 策略。
-  - 只实现已经确认的 JWT Claim 构造与 RS256 签发/验签；JWK Set、Refresh Token 随机值与摘要在对应决策完成后再实现。
-  - 此阶段只准备开发环境安全材料和配置入口，不建立认证业务表。
+  #### 任务：I-02 Access Token 内部请求与签发链路（进行中：设计已确认）
+
+  **学习目标**
+
+  - 掌握 JWT Header、Payload、Signature 的职责，以及 RS256 私钥签名和公钥验签的完整数据流。
+  - 掌握 JWT NumericDate、Issuer、Audience、Subject、Session、Scope、认证时间和签发时间之间的区别。
+  - 掌握 Spring Security JOSE 的 `JwtEncoder/JwtDecoder` 抽象、PEM 密钥加载、配置快速失败和固定 Clock 测试。
+
+  **共同决策**
+
+  - [x] 采用 D15、D16、D17、D18 与 D37～D43；Issuer/Audience、Claim 格式、单密钥无 `kid`、最小 JOSE 依赖、PEM 路径、签发端口、Decoder 和失败边界均已确认。
+  - [x] I-02 只有应用内部签发调用链；HTTP Token 请求由后续登录接口承担，不建立允许客户端自行指定用户身份的临时端点。
+
+  **执行边界**
+
+  ```text
+  Future LoginUseCase
+      → AccessTokenIssuer
+      → SpringJoseAccessTokenIssuer
+      → JwtEncoder + RS256 private key
+      → IssuedAccessToken(tokenValue, expiresAt)
+
+  JwtDecoder + RS256 public key
+      → signature + issuer + audience + nbf/exp validation
+  ```
+
+  - 输入只含 `userId、sessionId、scopes、authTime`；签发器生成 `jti、iat、nbf、exp`。
+  - Header 固定 `alg=RS256、typ=JWT` 且不含 `kid`。
+  - Payload 固定包含 `iss、aud、sub、jti、sid、scope、auth_time、iat、nbf、exp`。
+  - 不创建 Session、Refresh Token、Cookie、FilterChain、JWK Set、数据库迁移、Redis、RocketMQ 或 Outbox 对象。
+
+  **你实现**
+
+  - [ ] 在讲解完整签名与验签流程后，编写或补全一个关键签发行为测试，观察真实 RED。
+  - [ ] 使用 OpenSSL 在 Git 管理范围外生成本地 RSA 2048 位 PKCS#8 私钥和 X.509 公钥，并解释两个文件各自的持有者和用途。
+  - [ ] 本地解析一张测试 JWT 的 Header/Payload，说明 Base64URL 编码不等于加密；不得把真实 Token 粘贴到在线网站。
+
+  **Codex 生成**
+
+  - [ ] `AccessTokenIssueRequest`、`IssuedAccessToken`、`AccessTokenIssuer` 与内部异常的机械性代码和脱敏边界。
+  - [ ] JWT 配置属性、PEM RSA 加载器、Spring JOSE 配置、`SpringJoseAccessTokenIssuer`、Audience Validator 和重复测试夹具。
+  - [ ] 动态 RSA KeyPair/临时 PEM 测试支持，并为已有完整 Spring 上下文测试注入测试密钥。
+
+  **TDD 与验证顺序**
+
+  - [ ] 请求规则 RED/GREEN：正数用户 ID、非空 Session、非空 Scope、Scope 去重排序、`authTime` 边界和脱敏 `toString()`。
+  - [ ] PEM 加载 RED/GREEN：正确 PKCS#8/X.509、无效 PEM、错误类型、非 RSA、弱 RSA 和不匹配密钥。
+  - [ ] 签发 RED/GREEN：RS256/typ、完整 Claim、NumericDate、30 分钟 TTL、唯一 `jti`、Scope 格式和编码失败转换。
+  - [ ] Decoder RED/GREEN：正常验签、篡改、错误公钥、错误 Issuer/Audience、过期、尚未生效和 30 秒 Clock Skew。
+  - [ ] 运行 I-02 目标测试和 identity-service 非 Docker 回归；若环境内存阻止 JVM 启动，记录系统证据而不据此修改业务代码。
+
+  **观测与安全**
+
+  - [ ] 观察 JWT 三段结构和 Decoder 失败类型，确认日志、异常和 `toString()` 均不包含 Token 或密钥正文。
+  - [ ] 检查开发私钥、公钥、临时测试文件和环境配置均未进入 Git 暂存区。
+
+  **Git**
+
+  - [ ] Codex 检查工作区，只暂存 I-02 代码、测试和同步文档。
+  - [ ] Codex 运行 staged diff、空白和敏感文件检查后创建独立本地提交；不自动 push 或合并。
 
   ### 阶段 2：用户域与认证域首次汇合——登录
 

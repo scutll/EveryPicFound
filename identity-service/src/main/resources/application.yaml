@@ -1,6 +1,13 @@
 spring:
   application:
     name: identity-service
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+    validate-migration-naming: true
+    baseline-on-migrate: false
+    clean-disabled: true
 
 server:
   port: 8081
@@ -12,3 +19,8 @@ management:
         include:
           - health
           - info
+
+everypicfound:
+  auth:
+    password:
+      bcrypt-strength: ${EPF_BCRYPT_STRENGTH:14}

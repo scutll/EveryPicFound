@@ -40,9 +40,9 @@
 
 ## 1.2 密码哈希与 PasswordEncoder
 
-密码不能以明文或可逆加密形式保存。注册时使用自适应单向哈希算法生成 `password_hash`，登录时使用相同算法匹配。
+密码不能以明文或可逆加密形式保存。当前项目使用 BCrypt，并通过 Spring Security `DelegatingPasswordEncoder` 保存为 `{bcrypt}<哈希>`；登录时根据 `{id}` 前缀选择匹配算法，从而为以后逐次升级密码算法保留兼容路径。RS256 是 JWT 签名算法，不能用于密码哈希。
 
-Spring Security 通过 `PasswordEncoder` 抽象密码编码能力，常用算法包括：
+Spring Security 通过 `PasswordEncoder` 抽象密码编码能力，常见自适应算法包括：
 
 ```text
 BCrypt
@@ -65,16 +65,24 @@ password_hash
 匹配成功或失败
 ```
 
+当前密码输入策略：
+
+- 长度为 6～25 个 Unicode Code Point；
+- UTF-8 编码后不得超过 72 字节，避免触及 BCrypt 输入上限；
+- 不强制字符组合，但禁止空白和控制字符；
+- 不执行 `trim`、大小写转换或 Unicode 规范化，注册与登录必须对同一原始字节序列进行处理；
+- BCrypt 工作因子不在设计阶段写死，在编码切片通过本机耗时测试确定。
+
 密码哈希只用于身份认证，不参与每次业务请求。
 
 ---
 
 ## 1.3 Access Token 与 Refresh Token
 
-| Token | 作用 | 建议有效期 | 能否调用业务接口 |
+| Token | 作用 | 当前项目有效期 | 能否调用业务接口 |
 |---|---|---:|---|
-| Access Token | 证明当前请求的身份与权限 | 5～15 分钟 | 可以 |
-| Refresh Token | 换取新的 Access Token | 7～30 天 | 不可以 |
+| Access Token | 证明当前请求的身份与权限 | 30 分钟 | 可以 |
+| Refresh Token | 换取新的 Access Token | 1 小时 | 不可以 |
 
 双 Token 机制解决以下矛盾：
 
@@ -107,8 +115,7 @@ Base64Url(Signature)
 ```json
 {
   "typ": "JWT",
-  "alg": "RS256",
-  "kid": "auth-key-2026-01"
+  "alg": "RS256"
 }
 ```
 
@@ -116,7 +123,7 @@ Base64Url(Signature)
 |---|---|
 | `typ` | Token 类型 |
 | `alg` | 签名算法 |
-| `kid` | 密钥标识，用于公钥选择和密钥轮换 |
+| `kid` | 可选密钥标识，用于公钥选择和密钥轮换；当前项目在 JWT 签发切片再确认是否加入及其轮换规则 |
 
 微服务系统推荐使用非对称签名：
 
@@ -129,6 +136,8 @@ Gateway 和业务服务：
 ```
 
 业务服务只有公钥，可以验签但不能伪造 Token。
+
+当前密钥基线为 RS256、RSA 2048 位、PKCS#8 PEM 私钥和 X.509 PEM 公钥。开发密钥在本地生成，通过外部路径配置注入并禁止提交 Git；测试使用独立密钥。
 
 ### 1.4.2 Payload
 
@@ -227,7 +236,7 @@ nbf <= 当前时间 < exp
 nbf = iat
 ```
 
-也可以省略 `nbf`。需要预约未来生效的临时授权时，`nbf` 才更有实际意义。
+协议层允许某些 Token 省略 `nbf`，但当前项目首版保留该 Claim，并固定 `nbf = iat`。
 
 ### `exp`：Expiration Time
 
@@ -235,7 +244,7 @@ nbf = iat
 
 ### Clock Skew
 
-分布式系统不同机器的时钟可能存在少量误差。验证 `nbf` 和 `exp` 时可以设置很小的时钟偏差容忍，但所有服务仍应通过 NTP 同步时间并统一使用 UTC。
+分布式系统不同机器的时钟可能存在少量误差。当前项目验证 `nbf` 和 `exp` 时使用 30 秒 Clock Skew，但所有服务仍应通过 NTP 同步时间并统一使用 UTC。
 
 ---
 
@@ -244,6 +253,8 @@ nbf = iat
 `auth_valid_after` 是认证服务保存的用户级安全状态：
 
 > 早于该时间完成身份认证的登录 Session 和 Token 不再有效。
+
+账户创建时 `auth_valid_after = created_time`，两个字段取自 Java 应用同一次 `Clock` 读取。后续只在修改密码、禁用/启用、注销、退出全部设备等需要使既有认证整体失效的安全事件中推进；昵称、头像、最近登录时间和单 Session 退出不修改它。
 
 例如：
 
@@ -651,26 +662,32 @@ userId、sessionId、scope、authorities
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `id` | BIGINT | 用户稳定主键 |
-| `username` | VARCHAR(64) | 规范化后的唯一登录名 |
-| `password_hash` | VARCHAR(255) | 密码哈希 |
-| `nickname` | VARCHAR(64) | 展示昵称 |
-| `status` | VARCHAR(16) | NORMAL、LOCKED、DISABLED、DELETED |
-| `auth_valid_after` | DATETIME(3) | 早于该时间完成的认证失效 |
-| `last_login_time` | DATETIME(3) | 最近登录时间 |
-| `version` | INT | MySQL 乐观锁版本 |
-| `created_time` | DATETIME(3) | 创建时间 |
-| `updated_time` | DATETIME(3) | 更新时间 |
+| `id` | BIGINT NOT NULL AUTO_INCREMENT | 有符号用户稳定主键 |
+| `username` | VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL | 大小写敏感的唯一登录名；注销后改为 `#deleted#<userId>` |
+| `password_hash` | VARCHAR(255) NOT NULL | `{id}encodedPassword`，当前为 `{bcrypt}<哈希>` |
+| `nickname` | VARCHAR(32) NULL | 展示昵称；为空时回退到 username |
+| `avatar_url` | VARCHAR(500) NULL | 头像地址 |
+| `status` | VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL | NORMAL、DISABLED、DELETED |
+| `auth_valid_after` | DATETIME(3) NOT NULL | 早于该时间完成的认证失效 |
+| `last_login_time` | DATETIME(3) NULL | 最近登录时间 |
+| `version` | INT NOT NULL | MySQL 乐观锁版本，初始为 0 |
+| `created_time` | DATETIME(3) NOT NULL | UTC 创建时间 |
+| `updated_time` | DATETIME(3) NOT NULL | UTC 更新时间 |
 
-索引：
+建表索引与约束片段：
 
 ```sql
-PRIMARY KEY (id);
-UNIQUE KEY uk_user_account_username (username);
-KEY idx_user_account_status (status);
+PRIMARY KEY (id),
+UNIQUE KEY uk_user_account_username (username),
+CONSTRAINT chk_user_account_status
+    CHECK (status IN ('NORMAL', 'DISABLED', 'DELETED')),
+CONSTRAINT chk_user_account_version
+    CHECK (version >= 0)
 ```
 
-`version` 只用于 MySQL 乐观锁，不写入 JWT，也不用于 Redis 事件排序。
+当前不建立低选择性的 `status` 单列索引；出现真实管理查询后，根据查询条件和 `EXPLAIN` 决定组合索引。用户名、昵称和密码的复杂内容规则由 Java 校验，不重复写成 SQL 正则。`version` 只用于 MySQL 乐观锁，不写入 JWT，也不用于 Redis 事件排序。
+
+所有时间由 Java 应用通过注入的 `Clock` 生成，以 UTC `Instant` 表达，并在持久化边界显式转换为 UTC `DATETIME(3)`。JDBC 连接时区必须为 UTC，数据库不使用 `CURRENT_TIMESTAMP` 自动初始化或自动更新。
 
 ### 2.4.2 `user_session`
 
@@ -735,8 +752,9 @@ KEY idx_refresh_token_expires_time (expires_time);
 USER_AUTH_BOUNDARY_CHANGED
 SESSION_REVOKED
 SESSION_COMPROMISED
-USER_DELETED
 ```
+
+`USER_DELETED` 只有在图片、评论等服务出现真实生命周期消费者后才建立消息契约、Outbox 写入和 RocketMQ Topic；不得提前创建无人消费的事件通道。
 
 事件包含：
 
@@ -860,7 +878,7 @@ Value:
 失败次数
 
 TTL:
-例如 15 分钟
+在登录保护切片与失败窗口、阈值和锁定时间一起确认
 ```
 
 Refresh Token 摘要和状态只保存在 MySQL。
@@ -1091,13 +1109,14 @@ sequenceDiagram
     participant U as 认证服务
     participant DB as MySQL
 
-    C->>G: POST /api/auth/register
+    C->>G: POST /api/auth/register(username, password, nickname?)
     G->>U: 匿名路由
     U->>U: 校验并规范化用户名
     U->>U: PasswordEncoder生成密码哈希
     U->>DB: 事务插入user_account
     DB-->>U: 提交成功
-    U-->>C: 返回注册结果
+    U-->>C: 201 Created(userId, username, nickname, displayName)
+    C->>G: 复用内存中的用户名和密码调用登录
 ```
 
 ### MySQL 变化
@@ -1106,13 +1125,20 @@ sequenceDiagram
 
 ```text
 username          = 规范化用户名
-password_hash     = 密码哈希
+password_hash     = {bcrypt}<BCrypt 哈希>
+nickname          = 用户昵称或 NULL
+avatar_url        = NULL
 status            = NORMAL
-auth_valid_after  = 系统最小时间
+auth_valid_after  = 与 created_time 相同的 UTC 时间
+last_login_time   = NULL
 version           = 0
+created_time      = Java Clock 生成的 UTC 时间
+updated_time      = 与 created_time 相同
 ```
 
 用户名唯一性由数据库唯一索引最终保证。并发注册时，Java 捕获 `DuplicateKeyException` 并转换为“用户名已存在”。
+
+用户名输入先执行 `strip()`，结果长度 3～32，只允许大小写英文字母、数字和位于字母数字段之间的单个下划线；大小写敏感。昵称和密码遵循 1.2 节规则。注册接口不创建登录状态；前端只在内存中短暂复用凭据调用登录接口，随后立即清除密码变量。
 
 ### Redis 变化
 
@@ -1120,7 +1146,7 @@ version           = 0
 
 ### 一致性
 
-注册只写 MySQL。需要发布注册事件时，在同一事务中写 Outbox。
+注册只写 MySQL。当前没有真实消费者，因此不创建注册事件、Outbox 记录或 RocketMQ Topic；以后出现消费者时先补齐契约和传播方案。
 
 ---
 
@@ -1181,7 +1207,7 @@ Session 和 Refresh Token 必须在同一个 MySQL 事务中提交。数据库�
 ```text
 auth_time = Session.authenticated_time
 iat       = 当前签发时间
-nbf       = iat，或省略
+nbf       = iat
 exp       = iat + Access Token TTL
 ```
 
@@ -1314,7 +1340,7 @@ Session.authenticated_time >= user.auth_valid_after
 ```text
 auth_time保持为Session.authenticated_time
 iat更新为本次签发时间
-nbf设置为iat或省略
+nbf固定为iat
 exp重新计算
 ```
 
@@ -1696,10 +1722,12 @@ Lua根据更晚的auth_valid_after发布NORMAL状态
 创建用户变更屏障
   ↓
 MySQL事务：
+  username = #deleted#<userId>
   status = DELETED
   推进auth_valid_after
   撤销全部Session和Refresh Token
-  写USER_DELETED Outbox
+  写认证状态与Session撤销Outbox
+  仅在存在真实生命周期消费者时写USER_DELETED Outbox
   ↓
 Lua发布DELETED状态和Session deny
   ↓
@@ -1708,7 +1736,9 @@ Lua发布DELETED状态和Session deny
 
 旧 Token 会因为用户状态异常、Session 被撤销或认证时间早于分界点而失效。
 
-其他服务通过 `USER_DELETED` 事件处理各自的数据生命周期，认证服务不跨库直接删除其他服务数据。
+注销后原用户名立即可以重新注册。已注销记录通过稳定 `userId` 精确定位；`#deleted#` 前缀查询只用于后台排查，不作为业务唯一条件或恢复标识。账号恢复不是首版能力，且原用户名可能已经被重新注册。
+
+其他服务出现真实需求后通过 `USER_DELETED` 事件处理各自的数据生命周期，认证服务不跨库直接删除其他服务数据。
 
 ---
 
@@ -1930,7 +1960,7 @@ sid是否被撤销
 
 ```text
 Java：
-Instant
+注入的 Clock 生成 UTC Instant
 
 MySQL：
 DATETIME(3)
@@ -1942,7 +1972,9 @@ JWT：
 标准NumericDate
 ```
 
-所有机器通过 NTP 同步时间并使用 UTC。
+持久化适配层显式完成 `Instant` 与 UTC `DATETIME(3)` 的转换，JDBC 连接时区为 UTC；所有机器通过 NTP 同步时间。北京时间只在接口或日志展示边界转换。
+
+当前时间参数为：Access Token TTL 30 分钟、Refresh Token TTL 1 小时、Session 绝对 TTL 1 天、Clock Skew 30 秒。Refresh Token 是否滑动到期在轮换切片确认。
 
 用户级全局撤销还会同步撤销已有 Session，并写入 Session deny Key。因此即使 JWT `auth_time` 使用秒级表示，旧 Session 仍会被 `sid` 撤销检查阻止。
 
@@ -1952,7 +1984,8 @@ JWT：
 
 ```text
 初始：
-auth_valid_after = 系统最小时间
+created_time = 账户创建时间
+auth_valid_after = created_time
 
 T1 电脑A登录：
 Session S1 = ACTIVE

@@ -46,7 +46,7 @@
 
 ### 1.2.1 用例目标
 
-创建新的用户账户，但不自动创建登录 Session。注册成功后，客户端进入登录流程。
+创建新的用户账户，但不自动创建登录 Session。注册成功后，前端只在内存中短暂复用本次输入的用户名和密码调用登录接口；Session、Refresh Token、Refresh Cookie 和 Access Token 统一由登录用例创建。登录请求结束后，前端立即清除密码变量，不把密码写入本地持久化存储。
 
 ### 1.2.2 主流程
 
@@ -57,13 +57,37 @@ flowchart TD
     C --> D["用户名规范化"]
     D --> E["查询用户名是否已存在"]
     E --> F{"是否已存在"}
-    F -- 是 --> F1["返回 USERNAME_ALREADY_EXISTS"]
+    F -- 是 --> F1["返回用户名已存在<br/>HTTP 状态与稳定错误码在该失败分支编码前确认"]
     F -- 否 --> G["PasswordEncoder 生成 password_hash"]
     G --> H["MySQL 事务插入 user_account"]
     H --> I{"事务是否提交成功"}
     I -- 否 --> I1["返回注册失败"]
-    I -- 是 --> J["返回 userId、username、nickname"]
+    I -- 是 --> J["返回 201 Created<br/>userId、username、nickname、displayName"]
+    J --> K["前端复用内存中的凭据调用登录接口"]
 ```
+
+注册输入校验采用“领域原因与 HTTP 错误契约分离”的方式：`Username` 与 `RawPassword` 创建失败时分别抛出携带 `UsernameViolation`、`PasswordViolation` 的领域异常；领域层不知道 HTTP 状态和 JSON 格式。`IdentityExceptionHandler` 在接口边界将结构化原因映射为 HTTP 400 和稳定的 `USER_*` 字符串错误码。
+
+| 输入 | 领域原因 | 客户端错误码 |
+| --- | --- | --- |
+| 用户名为空 | `UsernameViolation.REQUIRED` | `USER_USERNAME_REQUIRED` |
+| 用户名长度非法 | `UsernameViolation.LENGTH` | `USER_USERNAME_LENGTH_INVALID` |
+| 用户名格式非法 | `UsernameViolation.FORMAT` | `USER_USERNAME_FORMAT_INVALID` |
+| 昵称长度非法 | `NicknameViolation.LENGTH` | `USER_NICKNAME_LENGTH_INVALID` |
+| 昵称包含控制符或换行 | `NicknameViolation.INVALID_CHARACTER` | `USER_NICKNAME_INVALID_CHARACTER` |
+| 密码为空 | `PasswordViolation.REQUIRED` | `USER_PASSWORD_REQUIRED` |
+| 密码 Code Point 长度非法 | `PasswordViolation.LENGTH` | `USER_PASSWORD_LENGTH_INVALID` |
+| 密码 UTF-8 超过 72 字节 | `PasswordViolation.UTF8_TOO_LONG` | `USER_PASSWORD_UTF8_TOO_LONG` |
+| 密码包含空白 | `PasswordViolation.WHITESPACE` | `USER_PASSWORD_WHITESPACE_NOT_ALLOWED` |
+| 密码包含控制字符 | `PasswordViolation.CONTROL_CHARACTER` | `USER_PASSWORD_CONTROL_CHARACTER_NOT_ALLOWED` |
+
+错误响应直接返回 `errorCode、message、field`；客户端使用稳定 `errorCode` 做展示映射，不根据可变的 `message` 文本判断逻辑。用户名重复返回 HTTP 409、`USER_USERNAME_ALREADY_EXISTS`、`field=username`。密码哈希失败和数据库失败等客户端无法处理的内部故障统一返回 HTTP 500、`SYSTEM_INTERNAL_ERROR`、`field=null`；服务端通过异常类型和日志定位具体原因，不在响应中暴露 BCrypt、MySQL 或堆栈细节。
+
+`Nickname.optionalOf` 将 `null` 或 strip 后的空白输入解释为未设置昵称；非空昵称保留内部普通空格和可打印 Unicode，包括 Emoji，长度按 Unicode Code Point 计算为 1～32，并拒绝控制字符、换行符、Unicode 行分隔符和段落分隔符。
+
+注册原始密码使用普通 final class `RawPassword` 而不是 record，避免 record 自动生成的 `toString()` 暴露密码；其 `toString()` 固定返回受保护占位文本。该对象不执行 trim、大小写转换或 Unicode 规范化，完成 BCrypt 哈希后应尽快丢弃，且不得写入响应或日志。`PasswordHash` 同样隐藏 `toString()`，具体 `{bcrypt}` 格式由后续密码编码适配器产生，本阶段不在领域对象中重复实现算法解析。
+
+`UserAccount.register` 接收已经校验的 `Username、PasswordHash、Optional<Nickname>` 和注入的 `Clock`。工厂方法只调用一次 `clock.instant()`，将该瞬间同时写入 `createdTime、updatedTime、authValidAfter`，并初始化 `status=NORMAL、version=0、avatarUrl=null、lastLoginTime=null`。账户持久化前 `id=null`，表示 MySQL 尚未分配自增 ID；MyBatis-Plus 插入后将自增 ID 回填到 PO，由 Repository 返回该 ID，不修改不可变领域对象。展示名称由领域对象按“昵称存在则使用昵称，否则回退到 username”计算。
 
 ### 1.2.3 MySQL 数据变化
 
@@ -71,12 +95,15 @@ flowchart TD
 
 ```text
 username          = 规范化后的用户名
-password_hash     = 自适应单向哈希结果
-nickname          = 用户昵称
+password_hash     = {bcrypt}<BCrypt 哈希>
+nickname          = 用户昵称或 NULL
+avatar_url        = NULL
 status            = NORMAL
-auth_valid_after  = 系统初始时间
+auth_valid_after  = 与 created_time 相同的 UTC 时间
 last_login_time   = NULL
 version           = 0
+created_time      = Java Clock 生成的 UTC 时间
+updated_time      = 与 created_time 相同
 ```
 
 用户名重复检查分为两层：
@@ -84,7 +111,16 @@ version           = 0
 1. 应用层预查询用于尽早返回友好错误；
 2. `username` 唯一索引承担并发条件下的最终正确性。
 
-并发注册相同用户名时，应用层捕获 `DuplicateKeyException` 并转换为统一业务错误。
+并发注册相同用户名时，`MyBatisUserRepository` 捕获 `DuplicateKeyException` 并转换为统一的 `UsernameAlreadyExistsException`。
+
+注册输入规则：
+
+- 用户名先执行 `strip()`，结果长度为 3～32，只允许大小写英文字母、数字和位于字母数字段之间的单个下划线；内部不允许空白，大小写敏感，后端不转换大小写；
+- 昵称可省略并保存为 `NULL`；设置昵称时先执行 `strip()`，结果为 1～32 个 Unicode Code Point，拒绝换行和控制字符；展示名称为“非空昵称优先，否则回退到用户名”；
+- 密码按 6～25 个 Unicode Code Point 校验，UTF-8 编码后不得超过 72 字节，禁止空白和控制字符；密码不得执行 `trim`、大小写转换或 Unicode 规范化；
+- 密码摘要使用 Spring Security `DelegatingPasswordEncoder` 的 `{id}encodedPassword` 格式，当前只注册 BCrypt 并写入 `{bcrypt}<哈希>`；2026-07-16 在当前机器串行测试 strength 10～14 的验证中位数为 47、100、191、381、695 ms，当前选择 strength 14，环境变化后重新测量。
+
+用户名、昵称和密码规则由 Java 负责；数据库通过用户名 ASCII 字符集、大小写敏感唯一索引以及账户状态和版本 `CHECK` 提供第二层保护。
 
 ### 1.2.4 Redis 数据变化
 
@@ -92,9 +128,11 @@ version           = 0
 
 ### 1.2.5 一致性处理
 
-注册核心数据只写 MySQL，不需要 Redis 锁。通过`unique key`即可实现唯一用户名
+注册核心数据只写 MySQL，不需要 Redis 锁。唯一索引保证并发注册时用户名最终唯一。`RegisterUserService` 在事务外完成输入校验、用户名预查询和 BCrypt；独立 `UserAccountRegistrationTransaction` 的 `@Transactional save` 只包围账户 INSERT，避免高成本哈希期间持有数据库事务。
 
-需要向其他服务传播用户创建事件时，在插入账户的同一事务中写入 `outbox_event`，事务提交后再由 Relay 发布消息。
+`MyBatisUserRepository` 保留 `@Repository` 以参与持久化异常转换，并且不能声明为 `final class`：当前 Spring Boot 默认使用 CGLIB 类代理，真实容器启动需要为该类生成子类。直接构造对象的 Mockito 单测不覆盖代理创建，因此注册切片同时保留显式启用的真实 Spring/MySQL 集成测试。
+
+当前没有真实消费者，因此注册切片不创建用户事件、Outbox 记录或 RocketMQ Topic。以后出现明确消费者时，先补齐消息契约和传播方案，再在插入账户的同一事务中写入 `outbox_event`。
 
 ---
 
@@ -185,10 +223,12 @@ sid       = sessionId
 jti       = 当前 Access Token 唯一标识
 auth_time = user_session.authenticated_time
 iat       = 当前签发时间
-nbf       = iat，或省略
+nbf       = iat
 exp       = iat + Access Token TTL
 scope     = 当前用户允许访问的能力范围
 ```
+
+当前参数基线为 Access Token TTL 30 分钟、Refresh Token TTL 1 小时、Session 绝对 TTL 1 天、Clock Skew 30 秒。Refresh Token 是否滑动到期在轮换切片确认。
 
 刷新 Access Token 时只更新 `iat`、`nbf`、`exp` 和 `jti`，`auth_time` 始终保持为该 Session 真正完成身份认证的时间。
 
@@ -647,7 +687,7 @@ Token.auth_time < user.auth_valid_after
 ```text
 读取 user:profile:{userId} 缓存
   ↓ 未命中
-查询 MySQL user_account / user_profile
+查询 MySQL user_account
   ↓
 回填短 TTL 缓存
   ↓
@@ -778,10 +818,12 @@ Lua 发布 NORMAL 和更晚的 authValidAfter
 创建用户级 barrier
   ↓
 MySQL 事务：
+  username = #deleted#<userId>
   status = DELETED
   推进 auth_valid_after
   撤销全部 Session 和 Refresh Token
-  写 USER_DELETED Outbox
+  写认证状态与 Session 撤销 Outbox
+  仅在存在真实生命周期消费者时写 USER_DELETED Outbox
   ↓
 Lua 发布 DELETED 状态和 Session deny
   ↓
@@ -790,7 +832,9 @@ Lua 发布 DELETED 状态和 Session deny
 清除客户端凭证
 ```
 
-认证服务只负责账户与认证数据。图片、评论、点赞、订单等其他领域的数据，由对应服务消费 `USER_DELETED` 事件后按照各自的数据生命周期处理，认证服务不跨库直接删除其他服务数据。
+注销事务通过 `#deleted#<userId>` 释放原用户名，原用户名随后可以重新注册。已注销账户以稳定 `userId` 精确定位；前缀查询只用于后台排查，不作为业务唯一条件或账户恢复标识。账号恢复不是首版能力，且不能保证取回已被重新注册的原用户名。
+
+认证服务只负责账户与认证数据。图片、评论、点赞、订单等其他领域出现真实生命周期需求后，由对应服务消费 `USER_DELETED` 事件处理自己的数据；认证服务不跨库直接删除其他服务数据。
 
 ---
 
@@ -1130,27 +1174,36 @@ public interface CurrentUserProvider {
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `id` | BIGINT | 用户稳定主键 |
-| `username` | VARCHAR(64) | 规范化后的唯一登录名 |
-| `password_hash` | VARCHAR(255) | 密码哈希 |
-| `nickname` | VARCHAR(64) | 展示昵称 |
-| `avatar_url` | VARCHAR(500) | 头像地址，可为空 |
-| `status` | VARCHAR(16) | NORMAL、LOCKED、DISABLED、DELETED |
-| `auth_valid_after` | DATETIME(3) | 早于此时间完成的认证全部失效 |
-| `last_login_time` | DATETIME(3) | 最近成功登录时间 |
-| `version` | INT | MySQL 乐观锁字段 |
-| `created_time` | DATETIME(3) | 创建时间 |
-| `updated_time` | DATETIME(3) | 更新时间 |
+| `id` | BIGINT NOT NULL AUTO_INCREMENT | 有符号用户稳定主键 |
+| `username` | VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL | 大小写敏感的唯一登录名；注销后改为 `#deleted#<userId>` |
+| `password_hash` | VARCHAR(255) NOT NULL | `{id}encodedPassword`，当前为 `{bcrypt}<哈希>` |
+| `nickname` | VARCHAR(32) NULL | 展示昵称；为空时展示层回退到 username |
+| `avatar_url` | VARCHAR(500) NULL | 头像地址 |
+| `status` | VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL | NORMAL、DISABLED、DELETED |
+| `auth_valid_after` | DATETIME(3) NOT NULL | 早于此时间完成的认证全部失效 |
+| `last_login_time` | DATETIME(3) NULL | 最近成功登录时间 |
+| `version` | INT NOT NULL | MySQL 乐观锁字段，初始为 0 |
+| `created_time` | DATETIME(3) NOT NULL | UTC 创建时间 |
+| `updated_time` | DATETIME(3) NOT NULL | UTC 更新时间 |
 
-索引：
+建表索引与约束片段：
 
 ```sql
-PRIMARY KEY (id);
-UNIQUE KEY uk_user_account_username (username);
-KEY idx_user_account_status (status);
+PRIMARY KEY (id),
+UNIQUE KEY uk_user_account_username (username),
+CONSTRAINT chk_user_account_status
+    CHECK (status IN ('NORMAL', 'DISABLED', 'DELETED')),
+CONSTRAINT chk_user_account_version
+    CHECK (version >= 0)
 ```
 
-`version` 只用于 MySQL 并发更新，不进入 JWT，也不参与 Redis 状态排序。
+当前不创建低选择性的 `status` 单列索引；出现真实管理查询后，通过 `EXPLAIN` 决定是否增加组合索引。复杂的用户名、昵称和密码内容规则不重复写成 SQL 正则约束。
+
+所有账户与认证时间由 Java 应用通过注入的 `Clock` 统一生成，以 `Instant` 表达并在持久化边界显式转换为 UTC `DATETIME(3)`。JDBC 连接时区必须为 UTC；数据库不使用 `CURRENT_TIMESTAMP` 自动初始化或自动更新。`version` 只用于 MySQL 并发更新，不进入 JWT，也不参与 Redis 状态排序。
+
+当前账户持久化适配使用 MyBatis-Plus `BaseMapper<UserAccountPo>`，简单插入和用户名存在性查询不建立 Mapper XML，也不引入 `IService` 或 `ServiceImpl`。`UserAccountPo` 使用 `LocalDateTime` 对接不携带时区的 `DATETIME(3)`；Converter 将领域 `Instant` 截断到毫秒精度后按 UTC 转换。用户名查询不执行 `LOWER` 或大小写归一化，由 `ascii_bin` 列与唯一索引提供最终的大小写敏感语义。
+
+Repository、PO、Mapper、CRUD、Wrapper 与乐观锁的通用组织方式见[《MyBatis-Plus 持久化链路与 CRUD》](../technologies/MyBatis-Plus持久化链路与CRUD.md)。
 
 ### 2.6.2 `user_session`
 
@@ -1223,16 +1276,15 @@ KEY idx_refresh_token_expires_time (expires_time);
 | `created_time` | DATETIME(3) | 创建时间 |
 | `published_time` | DATETIME(3) | 发布时间，可为空 |
 
-主要事件：
+认证主干事件：
 
 ```text
-USER_CREATED
-USER_PROFILE_CHANGED
 USER_AUTH_BOUNDARY_CHANGED
 SESSION_REVOKED
 SESSION_COMPROMISED
-USER_DELETED
 ```
+
+`USER_CREATED`、`USER_PROFILE_CHANGED`、`USER_DELETED` 属于按需建立的生命周期事件。只有出现明确消费者后，才补齐消息契约、Outbox 写入和 RocketMQ Topic；不得为无人消费的事件提前建设通道。
 
 业务状态更新和 Outbox 插入必须由同一个应用服务方法在同一事务中完成。
 
@@ -1288,22 +1340,20 @@ Result → Response 转换
 
 | 接口 | 主要方法 |
 |---|---|
-| `AuthApplicationService` | `register`、`login`、`refresh` |
+| `RegisterUserUseCase` | `register` |
+| `AuthApplicationService` | `login`、`refresh` |
 | `SessionApplicationService` | `logoutCurrent`、`logoutAll`、`listSessions`、`revokeSession` |
 | `UserApplicationService` | `getCurrentUser`、`updateProfile`、`changePassword`、`deleteAccount` |
 | `AdminUserApplicationService` | `disableUser`、`enableUser` |
 
-事务边界放在 Application Service。领域服务不控制事务，Controller 不直接添加复杂事务逻辑。
+事务边界放在 Application Service。领域服务不控制事务，Controller 不直接添加复杂事务逻辑。注册使用独立应用层事务组件包围写入，`RegisterUserService` 不标注整方法事务，从而使输入校验、预查询和 BCrypt 保持在事务外。
 
 ### 2.8.3 Repository 与基础能力接口
 
 ```java
 public interface UserRepository {
-    Optional<UserAccount> findByUsername(String username);
-    Optional<UserAccount> findById(Long userId);
-    Long save(UserAccount account);
-    boolean updateProfile(UserProfileChange change);
-    boolean updateSecurityState(UserSecurityChange change);
+    boolean existsByUsername(Username username);
+    long save(UserAccount account);
 }
 
 public interface UserSessionRepository {
@@ -1323,6 +1373,8 @@ public interface RefreshTokenRepository {
 }
 ```
 
+以上 `UserRepository` 是注册切片当前需要的最小端口。登录、资料修改和安全状态变更进入各自切片时，再按真实用例增加读取或条件更新方法；应用层不直接依赖 `BaseMapper`、PO 或查询 Wrapper。
+
 接口参数使用明确的 Command 或值对象，避免方法出现大量顺序难以辨认的基础类型参数。
 
 ---
@@ -1336,49 +1388,34 @@ public interface RefreshTokenRepository {
 ```yaml
 everypicfound:
   auth:
+    password:
+      bcrypt-strength: ${EPF_BCRYPT_STRENGTH:14}
+
     jwt:
       issuer: everypicfound-identity
       audience: everypicfound-api
-      access-token-ttl: 15m
+      access-token-ttl: 30m
       clock-skew: 30s
-      key-id: ${EPF_JWT_KEY_ID}
       private-key-location: ${EPF_JWT_PRIVATE_KEY}
       public-key-location: ${EPF_JWT_PUBLIC_KEY}
 
     refresh-token:
-      ttl: 14d
-      cookie-name: epf_refresh_token
-      cookie-path: /api/auth
-      secure: true
-      same-site: Lax
-      pepper: ${EPF_REFRESH_TOKEN_PEPPER}
+      ttl: 1h
 
     session:
-      absolute-ttl: 30d
-      max-active-sessions: 10
-      revoke-deny-ttl: 20m
-
-    login-protection:
-      enabled: true
-      failure-window: 15m
-      max-failures: 5
-      lock-duration: 15m
-
-    redis:
-      user-state-ttl: 3m
-      barrier-ttl: 30s
-      key-prefix: epf:auth
-
-    outbox:
-      relay-enabled: true
-      scan-interval: 1s
-      batch-size: 100
-      max-retry-count: 10
+      absolute-ttl: 1d
 ```
+
+密码切片只引入 `spring-security-crypto`，不提前加入会建立 HTTP 安全过滤链的完整 Security Starter。`PasswordHashProperties` 校验 strength 必须位于 4～31；当前 `DelegatingPasswordEncoder` 的编码 ID 和唯一映射均为 `bcrypt`，不提供 `noop` 回退。生产 strength 来自本机基准并可由环境变量覆盖；普通单元测试使用低 strength，避免安全成本拖慢测试套件。
+
+JWT 签名基线为 RS256、RSA 2048 位、PKCS#8 PEM 私钥和 X.509 PEM 公钥。开发密钥由本地生成并通过外部路径配置注入，不提交 Git；测试使用独立密钥。
+
+`kid` 与密钥轮换、Refresh Token 滑动语义、Cookie/CSRF、Refresh Token 敏感配置、登录保护阈值、Redis TTL 和 Outbox Relay/CDC 方式均在对应编码切片讨论并补充文档，当前配置示例不得为这些未确认事项提供默认实现。
 
 配置类建议：
 
 ```text
+PasswordHashProperties
 JwtProperties
 RefreshTokenProperties
 SessionProperties

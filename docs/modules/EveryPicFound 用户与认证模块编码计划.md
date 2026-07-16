@@ -151,8 +151,8 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
 
   - **准备阶段最小收口已完成**：父 Maven 工程、`identity-service`、`gateway-service`、`media-search-service`、`security-contract`、启动类、Dockerfile、基础路由、版本约束和编码准入边界已经落地。
   - **用户注册纵向切片已经完成**：`identity-service` 已具备用户领域规则、Flyway V1、MyBatis-Plus 持久化、BCrypt、注册应用用例、`POST /api/auth/register` 和分层测试，并由提交 `d1feabb` 独立收口。
-  - **公共安全契约仍需按真实消费者演进**：当前已有 Claim 名称、Scope 和 `UserAuthStateResponse` 初稿；I-02 先确认 Access Token Claim 格式，JWK Set、事件和其他契约等出现真实消费者时再稳定。
-  - **认证业务尚未汇合**：没有登录、Session、Refresh Token、Redis 认证 Key/Lua、JWK Set、Outbox 或 RocketMQ 业务 Topic；当前开始 I-02 Access Token 内部签发与验签基础切片。
+  - **公共安全契约仍需按真实消费者演进**：I-02 已确认 Access Token Claim 格式；当前已有 Claim 名称、Scope 和 `UserAuthStateResponse` 初稿，JWK Set、事件和其他契约等出现真实消费者时再稳定。
+  - **认证业务尚未汇合**：I-02 Access Token 内部签发与验签基础切片已经完成；仍没有登录、Session、Refresh Token、Redis 认证 Key/Lua、JWK Set、Outbox 或 RocketMQ 业务 Topic，下一编码切片才进入登录与认证首次汇合。
   - **Compose 已超前配置**：RocketMQ、Debezium、CDC、MySQL Binlog 等已经写入，但未运行、未验证，也不作为后续编码的既定方案。RocketMQ Broker 已关闭自动建 Topic，符合“实际使用时再建立”的原则。
   - **当前工作区仍存在未提交的准备阶段文档迁移和包骨架改动**；每个功能切片继续通过选择性暂存隔离，不把空骨架误算为已实现能力。
   - I-01 已在 Docker MySQL 8.0.46 上完成 90 项相关测试；I-02 不依赖 Docker，按固定 Clock 和动态 RSA 测试密钥执行纯本地目标验证。
@@ -403,7 +403,7 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
 
   **认证线：Token 基础能力**
 
-  #### 任务：I-02 Access Token 内部请求与签发链路（进行中：设计已确认）
+  #### 任务：I-02 Access Token 内部请求与签发链路（编码完成：学习练习待完成）
 
   **学习目标**
 
@@ -442,27 +442,27 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
 
   **Codex 生成**
 
-  - [ ] `AccessTokenIssueRequest`、`IssuedAccessToken`、`AccessTokenIssuer` 与内部异常的机械性代码和脱敏边界。
-  - [ ] JWT 配置属性、PEM RSA 加载器、Spring JOSE 配置、`SpringJoseAccessTokenIssuer`、Audience Validator 和重复测试夹具。
-  - [ ] 动态 RSA KeyPair/临时 PEM 测试支持，并为已有完整 Spring 上下文测试注入测试密钥。
+  - [x] `AccessTokenIssueRequest`、`IssuedAccessToken`、`AccessTokenIssuer` 与内部异常的机械性代码和脱敏边界。
+  - [x] JWT 配置属性、PEM RSA 加载器、Spring JOSE 配置、`SpringJoseAccessTokenIssuer`、Audience Validator 和重复测试夹具。
+  - [x] 动态 RSA KeyPair/临时 PEM 测试支持，并为已有完整 Spring 上下文测试注入测试密钥。
 
   **TDD 与验证顺序**
 
-  - [ ] 请求规则 RED/GREEN：正数用户 ID、非空 Session、非空 Scope、Scope 去重排序、`authTime` 边界和脱敏 `toString()`。
-  - [ ] PEM 加载 RED/GREEN：正确 PKCS#8/X.509、无效 PEM、错误类型、非 RSA、弱 RSA 和不匹配密钥。
-  - [ ] 签发 RED/GREEN：RS256/typ、完整 Claim、NumericDate、30 分钟 TTL、唯一 `jti`、Scope 格式和编码失败转换。
-  - [ ] Decoder RED/GREEN：正常验签、篡改、错误公钥、错误 Issuer/Audience、过期、尚未生效和 30 秒 Clock Skew。
-  - [ ] 运行 I-02 目标测试和 identity-service 非 Docker 回归；若环境内存阻止 JVM 启动，记录系统证据而不据此修改业务代码。
+  - [x] 请求规则 RED/GREEN：正数用户 ID、非空 Session、非空 Scope、Scope 去重排序、`authTime` 边界和脱敏 `toString()`。
+  - [x] PEM 加载 RED/GREEN：正确 PKCS#8/X.509、无效 PEM、错误类型、非 RSA、弱 RSA 和不匹配密钥。
+  - [x] 签发 RED/GREEN：RS256/typ、完整 Claim、NumericDate、30 分钟 TTL、唯一 `jti`、Scope 格式和编码失败转换。
+  - [x] Decoder RED/GREEN：正常验签、篡改、错误公钥、错误 Issuer/Audience、过期、尚未生效和 30 秒 Clock Skew。
+  - [x] 运行 I-02 目标测试和 identity-service 非 Docker 回归；首次 Surefire 子 JVM 因 Windows 页面文件不足无法映射约 244 MiB，确认根因后仅对测试子进程使用 `-Xmx128m`，未修改业务代码。
 
   **观测与安全**
 
-  - [ ] 观察 JWT 三段结构和 Decoder 失败类型，确认日志、异常和 `toString()` 均不包含 Token 或密钥正文。
-  - [ ] 检查开发私钥、公钥、临时测试文件和环境配置均未进入 Git 暂存区。
+  - [x] 自动化测试已观察 Decoder 对篡改、错误公钥和声明错误的失败类型，并确认异常和 `toString()` 不包含 Token、Session 或密钥正文；JWT 三段手工解析仍保留为用户学习练习。
+  - [x] 已检查 Git 状态与 staged 文件名；没有开发私钥、公钥、临时测试文件或敏感环境配置进入暂存区。
 
   **Git**
 
-  - [ ] Codex 检查工作区，只暂存 I-02 代码、测试和同步文档。
-  - [ ] Codex 运行 staged diff、空白和敏感文件检查后创建独立本地提交；不自动 push 或合并。
+  - [x] Codex 检查工作区，I-02 代码与测试已选择性暂存；同步文档在功能提交后独立收口，未混入其他工作区改动。
+  - [x] Codex 运行 staged diff、空白和敏感文件检查后创建本地功能提交 `6bc0397`；未 push 或合并。
 
   **详细实施计划**
 
@@ -496,9 +496,9 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
   }
   ```
 
-  - [ ] 先写请求/结果测试并运行，预期因上述生产类型不存在而测试编译失败。
-  - [ ] 最小实现正数 `userId`、非空 `sessionId`、非空 Scope、Scope 项不得含空白、去重稳定排序、非空 `authTime` 和 Token 脱敏。
-  - [ ] 运行批次测试，预期全部通过；不在 Request 构造阶段读取时钟或生成 JWT 字段。
+  - [x] 先写请求/结果测试并运行，确认因上述生产类型不存在而测试编译失败。
+  - [x] 最小实现正数 `userId`、非空 `sessionId`、非空 Scope、Scope 项不得含空白、去重稳定排序、非空 `authTime` 和 Token 脱敏。
+  - [x] 运行批次测试，10 项全部通过；Request 构造阶段不读取时钟或生成 JWT 字段。
 
   **批次 2：JOSE 配置属性与 PEM RSA 加载**
 
@@ -509,7 +509,7 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
   - 新建 `infrastructure/config/properties/JwtProperties.java`
   - 新建 `infrastructure/security/jwt/key/RsaKeyMaterial.java`
   - 新建 `infrastructure/security/jwt/key/PemRsaKeyLoader.java`
-  - 新建 `support/exception/JwtKeyConfigurationException.java`
+  - 新建 `infrastructure/security/jwt/key/JwtKeyConfigurationException.java`
   - 新建 `src/test/java/com/everypicfound/identity/support/security/TestRsaKeyMaterial.java`
   - 新建 `JwtPropertiesTest.java` 与 `PemRsaKeyLoaderTest.java`
 
@@ -527,18 +527,18 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
   }
   ```
 
-  - [ ] 先写动态 KeyPair/临时 PEM 夹具和加载失败测试，确认 RED 来自配置/加载类型尚不存在。
-  - [ ] 解析 PKCS#8 与 X.509 PEM，转换成 `RSAPrivateKey/RSAPublicKey`，校验模数至少 2048 位，并用 `SHA256withRSA` 内部探针验证公私钥匹配。
-  - [ ] 错误只包含配置项或资源描述，不拼接 PEM、Base64、Key 对象或私钥参数。
-  - [ ] 运行属性与密钥加载测试，预期正确、无效、错误类型、非 RSA、弱 RSA和不匹配场景全部通过。
+  - [x] 先写动态 KeyPair/临时 PEM 夹具和加载失败测试，确认 RED 来自配置/加载类型尚不存在。
+  - [x] 解析 PKCS#8 与 X.509 PEM，转换成 `RSAPrivateKey/RSAPublicKey`，校验模数至少 2048 位，并用 `SHA256withRSA` 内部探针验证公私钥匹配。
+  - [x] 错误只包含配置项或资源描述，不拼接 PEM、Base64、Key 对象或私钥参数。
+  - [x] 属性与密钥加载测试覆盖正确、损坏 Base64、错误标签、非 RSA、弱 RSA 和不匹配场景，10 项全部通过。
 
   **批次 3：生产 Encoder/Decoder 与验证器**
 
   文件：
 
   - 新建 `infrastructure/security/jwt/config/JwtConfiguration.java`
-  - 新建 `infrastructure/security/jwt/validator/JwtAudienceValidator.java`
-  - 新建 `infrastructure/security/jwt/validator/JwtRequiredClaimsValidator.java`
+  - 新建 `infrastructure/security/jwt/validation/JwtAudienceValidator.java`
+  - 新建 `infrastructure/security/jwt/validation/JwtRequiredClaimsValidator.java`
   - 新建对应 `package-info.java`
   - 新建 `JwtAudienceValidatorTest.java`、`JwtRequiredClaimsValidatorTest.java` 与 `JwtConfigurationTest.java`
 
@@ -550,24 +550,24 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
           .build();
   ```
 
-  随后组合 `JwtTimestampValidator(clockSkew)`、必填 `JwtIssuedAtValidator`、`JwtIssuerValidator`、Audience Validator 和必需 Claim Validator，并给时间验证器注入同一个 `Clock`。
+  随后组合 `JwtTimestampValidator(clockSkew)`、`JwtIssuerValidator`、Audience Validator 和必需 Claim Validator，并给时间验证器注入同一个 `Clock`。实现验证时确认 Spring Security 6.5 的 `JwtIssuedAtValidator(true)` 会要求 `iat` 位于当前时间前后 Clock Skew 内，若用于 30 分钟 Access Token，会导致 Token 在签发约 30 秒后错误失效；因此 `iat` 的必填由 Required Claims Validator 负责，不使用该 Validator，`nbf/exp` 仍由 Timestamp Validator 按 30 秒偏移校验。
 
-  - [ ] 先写 Decoder 配置与 Validator 测试，确认 RED 来自配置/验证器尚不存在。
-  - [ ] 创建 `JwtEncoder`、`JwtDecoder` Bean；Decoder 必须拒绝错误签名、Issuer、Audience、缺失必要 Claim、过期和尚未生效 Token。
-  - [ ] 以固定 Clock 精确验证 `exp/nbf` 边界内 30 秒成功、越界失败，不使用 `sleep()`。
+  - [x] 先写 Decoder 配置与 Validator 测试，确认 RED 来自配置/验证器尚不存在。
+  - [x] 创建 `JwtEncoder`、`JwtDecoder` Bean；Decoder 拒绝错误签名、Issuer、Audience、缺失必要 Claim、过期和尚未生效 Token。
+  - [x] 以固定 Clock 验证 `exp/nbf` 偏移内 29 秒成功、越过 30 秒的 31 秒失败，不使用 `sleep()`。
 
   **批次 4：RS256 Access Token 签发适配器**
 
   文件：
 
-  - 新建 `infrastructure/security/jwt/issuer/SpringJoseAccessTokenIssuer.java`
+  - 新建 `infrastructure/security/jwt/adapter/SpringJoseAccessTokenIssuer.java`
   - 新建或更新该包的 `package-info.java`
   - 新建 `SpringJoseAccessTokenIssuerTest.java`
 
   签发器使用：
 
   ```java
-  Instant issuedAt = clock.instant();
+  Instant issuedAt = Instant.ofEpochSecond(clock.instant().getEpochSecond());
   Instant expiresAt = issuedAt.plus(properties.accessTokenTtl());
 
   JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256)
@@ -577,9 +577,9 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
 
   `JwtClaimsSet` 写入 D15 的全部字段；`authTime` 晚于 `issuedAt` 时在编码前拒绝。`JwtEncoder.encode(...)` 的运行时失败统一转换为 `AccessTokenIssuanceException`。
 
-  - [ ] 先写真实 RSA 签发测试和模拟编码失败测试，确认 RED 来自适配器尚不存在。
-  - [ ] 实现最小签发逻辑，用生产 Decoder 回读并断言 Header、全部 Claim、NumericDate、30 分钟 TTL、Scope 格式和随机 UUID `jti`。
-  - [ ] 修改 Header/Payload/Signature、换公钥、改 Issuer/Audience，并确认 Decoder 均按预期拒绝。
+  - [x] 先写真实 RSA 签发测试和模拟编码失败测试，确认 RED 来自适配器尚不存在。
+  - [x] 实现最小签发逻辑，用真实公钥 Decoder 回读并断言 Header、全部 Claim、NumericDate、30 分钟 TTL、Scope 格式和随机 UUID `jti`。
+  - [x] 篡改 Signature、换公钥、改 Issuer/Audience，并确认 Decoder 均按预期拒绝；未来 `authTime` 在编码前拒绝。
 
   **批次 5：Spring 上下文兼容、观测与收口**
 
@@ -596,10 +596,19 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
     "-Dsurefire.failIfNoSpecifiedTests=false" test
   ```
 
-  - [ ] 先运行 I-02 目标测试，再运行 identity-service 非 Docker 回归；本切片未修改数据库，不强制重跑 MySQL 集成验收。
+  - [x] I-02 目标测试 33 项全部通过；identity-service 非 Docker 回归 123 项中 115 项通过、0 失败、0 错误、8 项 MySQL 条件测试跳过。本切片未修改数据库，不强制重跑 MySQL 集成验收。
   - [ ] 使用本地测试 Token 观察三段结构；只输出 Header/Payload 的测试字段，不输出完整 Token、Signature 或私钥。
   - [ ] 使用 `openssl genpkey` 与 `openssl pkey -pubout` 在仓库外生成开发密钥，确认 `git status` 不出现 PEM 文件。
-  - [ ] 运行 `git diff --check`、敏感文件名检查和 staged diff；只提交 I-02 代码、测试与同步文档。
+  - [x] 运行 `git diff --check`、敏感文件名检查和 staged diff；I-02 代码与测试已提交为 `6bc0397`，同步文档随后独立提交。
+
+  **实现证据与复盘（2026-07-16）**
+
+  - I-02 目标测试：33 项执行，0 失败、0 错误、0 跳过。
+  - identity-service 非 Docker 回归：123 项执行，0 失败、0 错误、8 项 MySQL 条件测试因 `EPF_TEST_MYSQL_ENABLED` 未开启而跳过。
+  - 首次测试子 JVM 启动失败不是业务错误：Windows 报错 1455，G1 无法映射约 244 MiB；保留其他 Java 进程不动，只对本次 Surefire 子进程使用 `-DargLine=-Xmx128m` 后恢复验证。
+  - Spring Security 6.5 的 `JwtIssuedAtValidator(true)` 会把 `iat` 限制在当前时间前后 Clock Skew 内，不适合 30 分钟 Access Token；当前由 Required Claims Validator 保证 `iat` 存在，由签发器生成当前 `iat`，由 `JwtTimestampValidator` 校验 `nbf/exp`。
+  - 未生成或提交真实密钥；测试 RSA KeyPair 与 PEM 只存在于 JUnit 临时目录，staged 文件名检查未发现 `.pem、.key、.p12、.pfx`。
+  - 本地功能提交：`6bc0397 feat(identity): implement access token issuance`。用户仍需完成仓库外 OpenSSL 开发密钥生成和本地 JWT 三段解析练习，完成后再勾选“你实现”中的两项学习任务。
 
   ### 阶段 2：用户域与认证域首次汇合——登录
 

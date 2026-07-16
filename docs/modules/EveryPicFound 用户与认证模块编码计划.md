@@ -464,6 +464,143 @@ Codex 在给出 Linux、基础设施或高风险命令前必须说明用途、�
   - [ ] Codex 检查工作区，只暂存 I-02 代码、测试和同步文档。
   - [ ] Codex 运行 staged diff、空白和敏感文件检查后创建独立本地提交；不自动 push 或合并。
 
+  **详细实施计划**
+
+  实现采用 5 个组内 TDD 批次；每批内部仍执行 RED → GREEN → Refactor，但完成整批后统一报告，避免逐个测试往返。所有生产代码使用 Java 17 语法，JOSE 具体类型只允许出现在基础设施层。
+
+  **批次 1：应用签发契约与脱敏边界**
+
+  文件：
+
+  - 新建 `identity-service/src/main/java/com/everypicfound/identity/application/command/AccessTokenIssueRequest.java`
+  - 新建 `identity-service/src/main/java/com/everypicfound/identity/application/port/out/AccessTokenIssuer.java`
+  - 新建 `identity-service/src/main/java/com/everypicfound/identity/application/result/IssuedAccessToken.java`
+  - 新建 `identity-service/src/main/java/com/everypicfound/identity/application/exception/InvalidAccessTokenIssueRequestException.java`
+  - 新建 `identity-service/src/main/java/com/everypicfound/identity/support/exception/AccessTokenIssuanceException.java`
+  - 新建对应 `package-info.java`
+  - 新建 `AccessTokenIssueRequestTest.java` 与 `IssuedAccessTokenTest.java`
+
+  核心签名固定为：
+
+  ```java
+  public interface AccessTokenIssuer {
+      IssuedAccessToken issue(AccessTokenIssueRequest request);
+  }
+
+  public final class AccessTokenIssueRequest {
+      // userId, sessionId, normalized scopes, authTime
+  }
+
+  public final class IssuedAccessToken {
+      // tokenValue, expiresAt; toString hides tokenValue
+  }
+  ```
+
+  - [ ] 先写请求/结果测试并运行，预期因上述生产类型不存在而测试编译失败。
+  - [ ] 最小实现正数 `userId`、非空 `sessionId`、非空 Scope、Scope 项不得含空白、去重稳定排序、非空 `authTime` 和 Token 脱敏。
+  - [ ] 运行批次测试，预期全部通过；不在 Request 构造阶段读取时钟或生成 JWT 字段。
+
+  **批次 2：JOSE 配置属性与 PEM RSA 加载**
+
+  文件：
+
+  - 修改 `identity-service/pom.xml`，只加入 `org.springframework.security:spring-security-oauth2-jose`
+  - 修改 `identity-service/src/main/resources/application.yaml`，加入 D39 的 6 个 JWT 配置入口
+  - 新建 `infrastructure/config/properties/JwtProperties.java`
+  - 新建 `infrastructure/security/jwt/key/RsaKeyMaterial.java`
+  - 新建 `infrastructure/security/jwt/key/PemRsaKeyLoader.java`
+  - 新建 `support/exception/JwtKeyConfigurationException.java`
+  - 新建 `src/test/java/com/everypicfound/identity/support/security/TestRsaKeyMaterial.java`
+  - 新建 `JwtPropertiesTest.java` 与 `PemRsaKeyLoaderTest.java`
+
+  属性模型固定为：
+
+  ```java
+  @ConfigurationProperties("everypicfound.auth.jwt")
+  public record JwtProperties(
+          String issuer,
+          String audience,
+          Duration accessTokenTtl,
+          Duration clockSkew,
+          Resource privateKeyLocation,
+          Resource publicKeyLocation) {
+  }
+  ```
+
+  - [ ] 先写动态 KeyPair/临时 PEM 夹具和加载失败测试，确认 RED 来自配置/加载类型尚不存在。
+  - [ ] 解析 PKCS#8 与 X.509 PEM，转换成 `RSAPrivateKey/RSAPublicKey`，校验模数至少 2048 位，并用 `SHA256withRSA` 内部探针验证公私钥匹配。
+  - [ ] 错误只包含配置项或资源描述，不拼接 PEM、Base64、Key 对象或私钥参数。
+  - [ ] 运行属性与密钥加载测试，预期正确、无效、错误类型、非 RSA、弱 RSA和不匹配场景全部通过。
+
+  **批次 3：生产 Encoder/Decoder 与验证器**
+
+  文件：
+
+  - 新建 `infrastructure/security/jwt/config/JwtConfiguration.java`
+  - 新建 `infrastructure/security/jwt/validator/JwtAudienceValidator.java`
+  - 新建 `infrastructure/security/jwt/validator/JwtRequiredClaimsValidator.java`
+  - 新建对应 `package-info.java`
+  - 新建 `JwtAudienceValidatorTest.java`、`JwtRequiredClaimsValidatorTest.java` 与 `JwtConfigurationTest.java`
+
+  Encoder 在基础设施配置中使用 Spring Security 6.5 的 `NimbusJwtEncoder` 和单元素 `ImmutableJWKSet`；Nimbus 类型不得越过该配置类。Decoder 固定：
+
+  ```java
+  NimbusJwtDecoder.withPublicKey(publicKey)
+          .signatureAlgorithm(SignatureAlgorithm.RS256)
+          .build();
+  ```
+
+  随后组合 `JwtTimestampValidator(clockSkew)`、必填 `JwtIssuedAtValidator`、`JwtIssuerValidator`、Audience Validator 和必需 Claim Validator，并给时间验证器注入同一个 `Clock`。
+
+  - [ ] 先写 Decoder 配置与 Validator 测试，确认 RED 来自配置/验证器尚不存在。
+  - [ ] 创建 `JwtEncoder`、`JwtDecoder` Bean；Decoder 必须拒绝错误签名、Issuer、Audience、缺失必要 Claim、过期和尚未生效 Token。
+  - [ ] 以固定 Clock 精确验证 `exp/nbf` 边界内 30 秒成功、越界失败，不使用 `sleep()`。
+
+  **批次 4：RS256 Access Token 签发适配器**
+
+  文件：
+
+  - 新建 `infrastructure/security/jwt/issuer/SpringJoseAccessTokenIssuer.java`
+  - 新建或更新该包的 `package-info.java`
+  - 新建 `SpringJoseAccessTokenIssuerTest.java`
+
+  签发器使用：
+
+  ```java
+  Instant issuedAt = clock.instant();
+  Instant expiresAt = issuedAt.plus(properties.accessTokenTtl());
+
+  JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256)
+          .type("JWT")
+          .build();
+  ```
+
+  `JwtClaimsSet` 写入 D15 的全部字段；`authTime` 晚于 `issuedAt` 时在编码前拒绝。`JwtEncoder.encode(...)` 的运行时失败统一转换为 `AccessTokenIssuanceException`。
+
+  - [ ] 先写真实 RSA 签发测试和模拟编码失败测试，确认 RED 来自适配器尚不存在。
+  - [ ] 实现最小签发逻辑，用生产 Decoder 回读并断言 Header、全部 Claim、NumericDate、30 分钟 TTL、Scope 格式和随机 UUID `jti`。
+  - [ ] 修改 Header/Payload/Signature、换公钥、改 Issuer/Audience，并确认 Decoder 均按预期拒绝。
+
+  **批次 5：Spring 上下文兼容、观测与收口**
+
+  文件：
+
+  - 修改 `UserRegistrationMySqlIntegrationTest.java`，通过 `TestRsaKeyMaterial` 动态注入临时公私钥路径
+  - 按实际实现结果更新本任务卡的 RED/GREEN、命令、失败原因和学习复盘
+
+  目标命令：
+
+  ```powershell
+  .\mvnw.cmd -pl identity-service -am `
+    "-Dtest=AccessTokenIssueRequestTest,IssuedAccessTokenTest,JwtPropertiesTest,PemRsaKeyLoaderTest,JwtAudienceValidatorTest,JwtRequiredClaimsValidatorTest,JwtConfigurationTest,SpringJoseAccessTokenIssuerTest" `
+    "-Dsurefire.failIfNoSpecifiedTests=false" test
+  ```
+
+  - [ ] 先运行 I-02 目标测试，再运行 identity-service 非 Docker 回归；本切片未修改数据库，不强制重跑 MySQL 集成验收。
+  - [ ] 使用本地测试 Token 观察三段结构；只输出 Header/Payload 的测试字段，不输出完整 Token、Signature 或私钥。
+  - [ ] 使用 `openssl genpkey` 与 `openssl pkey -pubout` 在仓库外生成开发密钥，确认 `git status` 不出现 PEM 文件。
+  - [ ] 运行 `git diff --check`、敏感文件名检查和 staged diff；只提交 I-02 代码、测试与同步文档。
+
   ### 阶段 2：用户域与认证域首次汇合——登录
 
   - 在编码前一次性确认 `user_session` 和 `user_refresh_token` 的完整轮换信息结构，再创建相应表，避免随后刷新功能反复改表。

@@ -97,10 +97,10 @@
 - 文档提交：`80652b1`、`9cf4ec2`。
 
 最近一次 I-02 收口验证执行 `identity-service` 123 项测试，0 失败、0 错误，其中 8 项 MySQL 条件测试因未开启环境开关而跳过。
+阶段 1 的登录链路已在 Docker MySQL 临时空库 `identity_test_codex` 上完成真实集成验收。
 
 ### 3.2 尚未完成
 
-- `POST /api/auth/login` 已完成编码与非 Docker 回归，真实 MySQL 闭环验收待 Docker Desktop 启动后执行。
 - Identity、Gateway 和 Media 的 Resource Server 安全链。
 - 携带 Access Token 访问受保护业务接口。
 - Session 和 Refresh Token。
@@ -126,7 +126,7 @@
 
 ## 阶段 1：Access Token-only 登录
 
-**状态：编码完成，MySQL 集成验收待执行**
+**状态：已完成**
 
 ### 用户结果
 
@@ -196,7 +196,9 @@ POST /api/auth/login
 - [x] `LoginUserService` 完成账户查询、BCrypt 匹配、状态检查、随机 `sid`、固定 Scope 和 Access Token 签发。
 - [x] 用户不存在、密码错误和非 `NORMAL` 状态统一返回 `401 AUTH_INVALID_CREDENTIALS`；Token 签发和数据访问故障返回统一 500。
 - [x] `identity-service` 定向回归执行 140 项测试，0 失败、0 错误，9 项 MySQL 条件测试跳过。
-- [ ] 已增加“注册写入 BCrypt → 错误密码 401 → 正确密码登录 → Decoder 回读 JWT”的 MySQL 集成测试；当前 Docker Desktop Linux engine 未运行，尚未获得真实数据库通过证据。
+- [x] 已增加并执行“注册写入 BCrypt → 错误密码 401 → 正确密码登录 → Decoder 回读 JWT”的 MySQL 集成测试。
+- [x] Docker MySQL 验收命令：设置 `EPF_TEST_MYSQL_ENABLED=true`，连接临时空库 `identity_test_codex`，执行 `mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" -pl identity-service -am "-Dtest=UserRegistrationMySqlIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test`；结果为 9 项测试，0 失败、0 错误、0 跳过。
+- 环境注意：当前本地 `identity_db` 已存在旧版 Flyway `V1` 执行历史，直接连接会触发 checksum mismatch；本次验收使用临时空库以避免修改开发库的 Flyway 历史。
 - 全仓回归已尝试；失败集中在 `media-search-service` 既有 Spring 测试上下文缺少 MyBatis `SqlSessionFactory`，与本次 Identity 登录切片无关，因此没有越界修改媒体模块。
 - 环境记录：沙箱中的 Maven 默认本地仓库为 `C:\Users\CodexSandboxOffline\.m2`；本次离线验证显式使用已有 `C:\Users\mxl_scut\.m2\repository`，未修改项目 Maven 配置。
 

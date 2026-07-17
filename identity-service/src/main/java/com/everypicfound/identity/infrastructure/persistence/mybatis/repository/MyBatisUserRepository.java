@@ -2,6 +2,7 @@ package com.everypicfound.identity.infrastructure.persistence.mybatis.repository
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.everypicfound.identity.domain.model.user.UserAccount;
+import com.everypicfound.identity.domain.model.user.UserAuthentication;
 import com.everypicfound.identity.domain.model.user.Username;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
 import com.everypicfound.identity.domain.repository.UserRepository;
@@ -12,6 +13,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * 基于 MyBatis-Plus 的用户账户仓储适配器。
@@ -36,6 +38,17 @@ public class MyBatisUserRepository implements UserRepository {
                 Wrappers.<UserAccountPo>lambdaQuery()
                         .eq(UserAccountPo::getUsername, username.value()));
         return count > 0;
+    }
+
+    @Override
+    public Optional<UserAuthentication> findAuthenticationByUsername(
+            Username username) {
+        Objects.requireNonNull(username, "username");
+        UserAccountPo po = mapper.selectOne(
+                Wrappers.<UserAccountPo>lambdaQuery()
+                        .eq(UserAccountPo::getUsername, username.value()));
+        return Optional.ofNullable(po)
+                .map(converter::toAuthentication);
     }
 
     @Override

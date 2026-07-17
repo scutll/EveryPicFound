@@ -3,6 +3,7 @@ package com.everypicfound.identity.infrastructure.persistence.mybatis.repository
 import com.everypicfound.identity.domain.model.user.Nickname;
 import com.everypicfound.identity.domain.model.user.PasswordHash;
 import com.everypicfound.identity.domain.model.user.UserAccount;
+import com.everypicfound.identity.domain.model.user.UserAuthentication;
 import com.everypicfound.identity.domain.model.user.Username;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
 import com.everypicfound.identity.infrastructure.persistence.mybatis.converter.UserAccountPersistenceConverter;
@@ -17,6 +18,7 @@ import org.springframework.dao.DuplicateKeyException;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,6 +49,40 @@ class MyBatisUserRepositoryTest {
                 .isTrue();
         assertThat(repository.existsByUsername(Username.of("user01")))
                 .isFalse();
+    }
+
+    @Test
+    void findsMinimalAuthenticationViewByCaseSensitiveUsername() {
+        UserAccountPo po = new UserAccountPo();
+        po.setId(42L);
+        po.setUsername("User01");
+        po.setPasswordHash("{bcrypt}encoded-password");
+        po.setStatus("NORMAL");
+        po.setAuthValidAfter(LocalDateTime.parse(
+                "2026-07-16T07:00:00.123"));
+        when(mapper.selectOne(any())).thenReturn(po);
+
+        UserAuthentication authentication = repository
+                .findAuthenticationByUsername(Username.of("User01"))
+                .orElseThrow();
+
+        assertThat(authentication.userId()).isEqualTo(42L);
+        assertThat(authentication.passwordHash().value())
+                .isEqualTo("{bcrypt}encoded-password");
+        assertThat(authentication.status().name()).isEqualTo("NORMAL");
+        assertThat(authentication.authValidAfter())
+                .isEqualTo(Instant.parse("2026-07-16T07:00:00.123Z"));
+        assertThat(authentication.toString())
+                .contains("passwordHash=PROTECTED")
+                .doesNotContain("encoded-password");
+    }
+
+    @Test
+    void returnsEmptyWhenUsernameCannotBeAuthenticated() {
+        when(mapper.selectOne(any())).thenReturn(null);
+
+        assertThat(repository.findAuthenticationByUsername(
+                Username.of("Missing01"))).isEmpty();
     }
 
     @Test

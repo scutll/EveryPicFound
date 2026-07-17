@@ -1,12 +1,19 @@
 package com.everypicfound.identity.interfaces.rest.controller;
 
+import com.everypicfound.identity.application.command.LoginUserCommand;
 import com.everypicfound.identity.application.command.RegisterUserCommand;
+import com.everypicfound.identity.application.exception.InvalidCredentialsException;
+import com.everypicfound.identity.application.port.in.LoginUserUseCase;
 import com.everypicfound.identity.application.port.in.RegisterUserUseCase;
+import com.everypicfound.identity.application.result.LoginUserResult;
 import com.everypicfound.identity.application.result.RegisterUserResult;
 import com.everypicfound.identity.domain.model.user.InvalidUsernameException;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
 import com.everypicfound.identity.domain.model.user.UsernameViolation;
+import com.everypicfound.identity.interfaces.rest.request.LoginUserRequest;
 import com.everypicfound.identity.interfaces.rest.request.RegisterUserRequest;
+import com.everypicfound.identity.interfaces.rest.response.LoginUserResponse;
+import com.everypicfound.identity.support.exception.AccessTokenIssuanceException;
 import com.everypicfound.identity.support.exception.PasswordHashingException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +22,8 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -33,6 +42,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private RegisterUserUseCase registerUserUseCase;
+
+    @MockitoBean
+    private LoginUserUseCase loginUserUseCase;
 
     @Test
     void registersUserAndReturnsCreatedPublicResponse() throws Exception {
@@ -83,6 +95,98 @@ class AuthControllerTest {
         assertThat(request.toString())
                 .contains("password=PROTECTED")
                 .doesNotContain("secret123");
+    }
+
+    @Test
+    void logsInAndReturnsBearerAccessToken() throws Exception {
+        when(loginUserUseCase.login(any(LoginUserCommand.class)))
+                .thenReturn(new LoginUserResult(
+                        "header.payload.signature",
+                        Instant.parse("2026-07-17T10:30:00Z")));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "  User_01  ",
+                                  "password": "secret123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.accessToken")
+                        .value("header.payload.signature"))
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.expiresAt")
+                        .value("2026-07-17T10:30:00Z"));
+
+        verify(loginUserUseCase).login(
+                org.mockito.ArgumentMatchers.argThat(command ->
+                        command.username().equals("  User_01  ")
+                                && command.rawPassword()
+                                .equals("secret123")));
+    }
+
+    @Test
+    void protectsLoginPasswordAndAccessTokenWhenRenderedAsText() {
+        LoginUserRequest request = new LoginUserRequest(
+                "User_01",
+                "secret123");
+        LoginUserResponse response = new LoginUserResponse(
+                "header.payload.signature",
+                "Bearer",
+                Instant.parse("2026-07-17T10:30:00Z"));
+
+        assertThat(request.toString())
+                .contains("password=PROTECTED")
+                .doesNotContain("secret123");
+        assertThat(response.toString())
+                .contains("accessToken=PROTECTED")
+                .doesNotContain("header.payload.signature");
+    }
+
+    @Test
+    void returnsUnauthorizedForInvalidCredentials() throws Exception {
+        when(loginUserUseCase.login(any(LoginUserCommand.class)))
+                .thenThrow(new InvalidCredentialsException());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "User_01",
+                                  "password": "wrong123"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode")
+                        .value("AUTH_INVALID_CREDENTIALS"))
+                .andExpect(jsonPath("$.message")
+                        .value("登录凭据无效"))
+                .andExpect(jsonPath("$.field").value((Object) null));
+    }
+
+    @Test
+    void hidesAccessTokenIssuanceFailureBehindInternalError()
+            throws Exception {
+        when(loginUserUseCase.login(any(LoginUserCommand.class)))
+                .thenThrow(new AccessTokenIssuanceException(
+                        "access token issuance failed",
+                        new IllegalStateException("encoder unavailable")));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "User_01",
+                                  "password": "secret123"
+                                }
+                                """))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.errorCode")
+                        .value("SYSTEM_INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.field").value((Object) null));
     }
 
     @Test

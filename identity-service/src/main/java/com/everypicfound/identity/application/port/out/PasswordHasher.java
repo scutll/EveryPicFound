@@ -1,6 +1,7 @@
 package com.everypicfound.identity.application.port.out;
 
 import com.everypicfound.identity.domain.model.user.PasswordHash;
+import com.everypicfound.identity.domain.model.user.PresentedPassword;
 import com.everypicfound.identity.domain.model.user.RawPassword;
 
 /**
@@ -10,5 +11,7 @@ public interface PasswordHasher {
 
     PasswordHash hash(RawPassword rawPassword);
 
-    boolean matches(RawPassword rawPassword, PasswordHash passwordHash);
+    boolean matches(
+            PresentedPassword presentedPassword,
+            PasswordHash passwordHash);
 }

@@ -1,6 +1,7 @@
 package com.everypicfound.identity.infrastructure.security.password.adapter;
 
 import com.everypicfound.identity.domain.model.user.PasswordHash;
+import com.everypicfound.identity.domain.model.user.PresentedPassword;
 import com.everypicfound.identity.domain.model.user.RawPassword;
 import com.everypicfound.identity.support.exception.PasswordHashingException;
 import org.junit.jupiter.api.Test;
@@ -26,9 +27,11 @@ class BCryptPasswordHasherTest {
         PasswordHash passwordHash = hasher.hash(rawPassword);
 
         assertThat(passwordHash.value()).startsWith("{bcrypt}$2a$04$");
-        assertThat(hasher.matches(rawPassword, passwordHash)).isTrue();
         assertThat(hasher.matches(
-                RawPassword.of("different123"),
+                PresentedPassword.of("secret123"),
+                passwordHash)).isTrue();
+        assertThat(hasher.matches(
+                PresentedPassword.of("different123"),
                 passwordHash)).isFalse();
     }
 

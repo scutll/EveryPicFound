@@ -51,6 +51,10 @@ public enum UserErrorCode {
             "登录凭据无效",
             null,
             HttpStatus.UNAUTHORIZED),
+    AUTH_INVALID_REFRESH_TOKEN(
+            "刷新令牌无效",
+            null,
+            HttpStatus.UNAUTHORIZED),
     SYSTEM_INTERNAL_ERROR(
             "服务器内部错误",
             null,

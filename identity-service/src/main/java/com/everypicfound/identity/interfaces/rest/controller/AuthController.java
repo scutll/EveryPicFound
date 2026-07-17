@@ -2,10 +2,13 @@ package com.everypicfound.identity.interfaces.rest.controller;
 
 import com.everypicfound.identity.application.port.in.LoginUserUseCase;
 import com.everypicfound.identity.application.port.in.RegisterUserUseCase;
+import com.everypicfound.identity.application.port.in.RefreshTokenUseCase;
 import com.everypicfound.identity.application.result.LoginUserResult;
+import com.everypicfound.identity.application.result.RefreshTokenResult;
 import com.everypicfound.identity.application.result.RegisterUserResult;
 import com.everypicfound.identity.interfaces.rest.request.LoginUserRequest;
 import com.everypicfound.identity.interfaces.rest.request.RegisterUserRequest;
+import com.everypicfound.identity.interfaces.rest.request.RefreshTokenRequest;
 import com.everypicfound.identity.interfaces.rest.response.LoginUserResponse;
 import com.everypicfound.identity.interfaces.rest.response.RegisterUserResponse;
 import org.springframework.http.HttpStatus;
@@ -26,16 +29,21 @@ public final class AuthController {
 
     private final RegisterUserUseCase registerUserUseCase;
     private final LoginUserUseCase loginUserUseCase;
+    private final RefreshTokenUseCase refreshTokenUseCase;
 
     public AuthController(
             RegisterUserUseCase registerUserUseCase,
-            LoginUserUseCase loginUserUseCase) {
+            LoginUserUseCase loginUserUseCase,
+            RefreshTokenUseCase refreshTokenUseCase) {
         this.registerUserUseCase = Objects.requireNonNull(
                 registerUserUseCase,
                 "registerUserUseCase");
         this.loginUserUseCase = Objects.requireNonNull(
                 loginUserUseCase,
                 "loginUserUseCase");
+        this.refreshTokenUseCase = Objects.requireNonNull(
+                refreshTokenUseCase,
+                "refreshTokenUseCase");
     }
 
     @PostMapping("/register")
@@ -51,6 +59,13 @@ public final class AuthController {
     @PostMapping("/login")
     public LoginUserResponse login(@RequestBody LoginUserRequest request) {
         LoginUserResult result = loginUserUseCase.login(
+                request.toCommand());
+        return LoginUserResponse.from(result);
+    }
+
+    @PostMapping("/refresh")
+    public LoginUserResponse refresh(@RequestBody RefreshTokenRequest request) {
+        RefreshTokenResult result = refreshTokenUseCase.refresh(
                 request.toCommand());
         return LoginUserResponse.from(result);
     }

@@ -316,14 +316,27 @@ POST /api/auth/login
 - 实现 `POST /api/auth/refresh`。
 - 客户端提交 Refresh Token，服务端计算摘要后查询 MySQL。
 - 校验 Token 状态、过期时间和所属 Session 状态。
-- 成功后签发新的 Access Token。
-- 是否在首版立刻轮换 Refresh Token，在阶段 3B 开始前再根据实现复杂度确认；默认倾向简单正确，必要时使用 MySQL 条件更新保证并发下只有一个请求成功。
+- 成功后签发新的 Access Token，并立即轮换 Refresh Token。
+- 旧 Refresh Token 使用 MySQL 条件更新从 `ACTIVE` 标记为 `USED`，只有影响行数为 1 的请求可以继续插入新 Refresh Token。
+- 新 Refresh Token 以 JSON 响应返回，数据库仍只保存 SHA-256 摘要，不保存原文。
+- 刷新时 Access Token 的 `auth_time` 沿用原 Session 创建时间，不因为刷新而变成新的认证时间。
+- 当前阶段不引入 Cookie/CSRF、Redis、退出登录、撤销链路、MQ 或 Outbox。
 
 #### 测试重点
 
-- 正常刷新成功，并在选定轮换方案后覆盖对应状态变化。
+- 正常刷新成功，旧 Refresh Token 变为 `USED`，响应返回新的 Access Token 和 Refresh Token。
 - 同一 Refresh Token 并发使用时不能产生多个有效的新凭据。
 - 过期、已使用、已撤销的 Token 不能刷新。
+- 不存在、空白或并发复用失败的 Refresh Token 返回 401 `AUTH_INVALID_REFRESH_TOKEN`。
+
+#### 当前进展记录
+
+- [x] 新增 `RefreshTokenUseCase` / `RefreshTokenService`，完成 Refresh Token 换发与轮换编排。
+- [x] 新增 `POST /api/auth/refresh`，请求体使用 JSON Refresh Token，响应复用登录 Token 对响应结构。
+- [x] Repository 支持按 Refresh Token 摘要查询 Token + Session 权威状态。
+- [x] Repository 使用 MySQL 条件更新完成旧 Token `ACTIVE -> USED`，避免并发下重复换发。
+- [x] 无效、过期、已使用或并发复用失败统一映射为 401 `AUTH_INVALID_REFRESH_TOKEN`。
+- 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" "-Dsurefire.failIfNoSpecifiedTests=false" -pl identity-service -am "-Dtest=RefreshTokenServiceTest,RefreshTokenResultTest,AuthControllerTest,MyBatisUserRefreshTokenRepositoryTest" test` 通过。
 
 ### 阶段 3 明确不做
 

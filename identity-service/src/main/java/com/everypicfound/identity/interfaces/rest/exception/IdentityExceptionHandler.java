@@ -1,6 +1,7 @@
 package com.everypicfound.identity.interfaces.rest.exception;
 
 import com.everypicfound.identity.application.exception.InvalidCredentialsException;
+import com.everypicfound.identity.application.exception.InvalidRefreshTokenException;
 import com.everypicfound.identity.domain.model.user.InvalidPasswordException;
 import com.everypicfound.identity.domain.model.user.InvalidNicknameException;
 import com.everypicfound.identity.domain.model.user.InvalidUsernameException;
@@ -54,6 +55,11 @@ public class IdentityExceptionHandler {
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidCredentials() {
         return responseFor(UserErrorCode.AUTH_INVALID_CREDENTIALS);
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidRefreshToken() {
+        return responseFor(UserErrorCode.AUTH_INVALID_REFRESH_TOKEN);
     }
 
     @ExceptionHandler({

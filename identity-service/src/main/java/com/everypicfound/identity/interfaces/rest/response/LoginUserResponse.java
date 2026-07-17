@@ -1,6 +1,7 @@
 package com.everypicfound.identity.interfaces.rest.response;
 
 import com.everypicfound.identity.application.result.LoginUserResult;
+import com.everypicfound.identity.application.result.RefreshTokenResult;
 
 import java.time.Instant;
 
@@ -15,6 +16,15 @@ public record LoginUserResponse(
         Instant refreshTokenExpiresAt) {
 
     public static LoginUserResponse from(LoginUserResult result) {
+        return new LoginUserResponse(
+                result.accessToken(),
+                result.tokenType(),
+                result.expiresAt(),
+                result.refreshToken(),
+                result.refreshTokenExpiresAt());
+    }
+
+    public static LoginUserResponse from(RefreshTokenResult result) {
         return new LoginUserResponse(
                 result.accessToken(),
                 result.tokenType(),

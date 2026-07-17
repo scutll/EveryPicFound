@@ -2,10 +2,14 @@ package com.everypicfound.identity.interfaces.rest.controller;
 
 import com.everypicfound.identity.application.command.LoginUserCommand;
 import com.everypicfound.identity.application.command.RegisterUserCommand;
+import com.everypicfound.identity.application.command.RefreshTokenCommand;
 import com.everypicfound.identity.application.exception.InvalidCredentialsException;
+import com.everypicfound.identity.application.exception.InvalidRefreshTokenException;
 import com.everypicfound.identity.application.port.in.LoginUserUseCase;
 import com.everypicfound.identity.application.port.in.RegisterUserUseCase;
+import com.everypicfound.identity.application.port.in.RefreshTokenUseCase;
 import com.everypicfound.identity.application.result.LoginUserResult;
+import com.everypicfound.identity.application.result.RefreshTokenResult;
 import com.everypicfound.identity.application.result.RegisterUserResult;
 import com.everypicfound.identity.domain.model.user.InvalidUsernameException;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
@@ -45,6 +49,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private LoginUserUseCase loginUserUseCase;
+
+    @MockitoBean
+    private RefreshTokenUseCase refreshTokenUseCase;
 
     @Test
     void registersUserAndReturnsCreatedPublicResponse() throws Exception {
@@ -174,6 +181,60 @@ class AuthControllerTest {
                         .value("AUTH_INVALID_CREDENTIALS"))
                 .andExpect(jsonPath("$.message")
                         .value("登录凭据无效"))
+                .andExpect(jsonPath("$.field").value((Object) null));
+    }
+
+    @Test
+    void refreshesTokenPairAndReturnsRotatedRefreshToken() throws Exception {
+        when(refreshTokenUseCase.refresh(any(RefreshTokenCommand.class)))
+                .thenReturn(new RefreshTokenResult(
+                        "new.header.payload.signature",
+                        Instant.parse("2026-07-17T11:10:00Z"),
+                        "new-refresh-token",
+                        Instant.parse("2026-07-17T11:40:00Z")));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "refreshToken": "old-refresh-token"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.accessToken")
+                        .value("new.header.payload.signature"))
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.expiresAt")
+                        .value("2026-07-17T11:10:00Z"))
+                .andExpect(jsonPath("$.refreshToken")
+                        .value("new-refresh-token"))
+                .andExpect(jsonPath("$.refreshTokenExpiresAt")
+                        .value("2026-07-17T11:40:00Z"));
+
+        verify(refreshTokenUseCase).refresh(
+                org.mockito.ArgumentMatchers.argThat(command ->
+                        command.refreshToken().equals("old-refresh-token")));
+    }
+
+    @Test
+    void returnsUnauthorizedForInvalidRefreshToken() throws Exception {
+        when(refreshTokenUseCase.refresh(any(RefreshTokenCommand.class)))
+                .thenThrow(new InvalidRefreshTokenException());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "refreshToken": "used-or-missing-token"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode")
+                        .value("AUTH_INVALID_REFRESH_TOKEN"))
+                .andExpect(jsonPath("$.message")
+                        .value("刷新令牌无效"))
                 .andExpect(jsonPath("$.field").value((Object) null));
     }
 

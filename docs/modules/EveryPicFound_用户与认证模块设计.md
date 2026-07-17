@@ -25,8 +25,8 @@
 | 用例 | 对外接口 | 是否需要 Access Token | 主要写入位置 |
 |---|---|---:|---|
 | 用户注册 | `POST /api/auth/register` | 否 | MySQL |
-| 用户登录 | `POST /api/auth/login` | 否 | MySQL、Redis |
-| Token 刷新 | `POST /api/auth/refresh` | 否，使用 Refresh Cookie | MySQL |
+| 用户登录 | `POST /api/auth/login` | 否 | MySQL |
+| Token 刷新 | `POST /api/auth/refresh` | 否，提交 JSON Refresh Token | MySQL |
 | 退出当前设备 | `POST /api/auth/logout` | 是 | MySQL、Redis、Outbox |
 | 查询登录设备 | `GET /api/auth/sessions` | 是 | 只读 MySQL |
 | 指定设备下线 | `DELETE /api/auth/sessions/{sessionId}` | 是 | MySQL、Redis、Outbox |
@@ -392,7 +392,7 @@ Access Token 自然过期不需要修改 MySQL 或 Redis。与该 Token 关联�
 
 ```mermaid
 flowchart TD
-    A["客户端携带 Refresh Token Cookie"] --> B["认证服务计算 token_digest"]
+    A["客户端提交 JSON Refresh Token"] --> B["认证服务计算 token_hash"]
     B --> C["查询 Refresh Token、Session 和用户"]
     C --> D{"用户或 Session 屏障是否存在"}
     D -- 是 --> D1["返回 AUTH_STATE_UPDATING"]
@@ -413,8 +413,10 @@ flowchart TD
     M --> N{"事务是否提交成功"}
     N -- 否 --> N1["不签发新 Token"]
     N -- 是 --> O["签发新 Access Token"]
-    O --> P["轮换 Refresh Token Cookie"] 
+    O --> P["JSON 返回新 Access Token 与新 Refresh Token"]
 ```
+
+当前代码阶段采用 JSON 请求/响应传递 Refresh Token，以先打通最小完整功能闭环；Refresh Cookie、CSRF/Origin 防护和浏览器 Cookie 方案作为后续演进项，不属于本阶段实现范围。
 
 刷新条件：
 

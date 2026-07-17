@@ -206,16 +206,16 @@ POST /api/auth/login
 
 ## 阶段 2：受保护访问闭环
 
-**状态：进行中，已完成 Gateway 与 Media 的最小 Resource Server 接入**
+**状态：进行中，已完成 Gateway 与 Media 的最小 Resource Server 接入，并加入 dev-only 认证探针接口**
 
 ### 用户结果
 
-登录用户可以携带 Access Token，通过 Gateway 调用现有图片上传或搜索接口；未登录或 Token 无效的请求被拒绝。
+登录用户可以携带 Access Token，通过 Gateway 调用 Media 的受保护接口；未登录或 Token 无效的请求被拒绝。当前因真实搜索、上传链路会牵涉模型服务、Qdrant 和文件处理，优先使用 dev-only 探针接口验证认证闭环，真实业务接口留到基础功能总验收阶段再接入。
 
 ### 实施顺序
 
 1. Media 加入最小 Spring Security Resource Server 配置，使用公开公钥本地验签。
-2. 划分公开路径和受保护路径，不新建仅用于演示认证的伪业务接口。
+2. 划分公开路径和受保护路径；当前使用 `dev` profile 下的 `/api/search/_auth/probe` 作为认证探针，不接入真实搜索或上传流程。
 3. 从 `SecurityContext` 中读取 `sub` 和 `scope`，建立最小当前用户访问方式。
 4. Gateway 加入相同的 JWT 标准验证与路由授权。
 5. Gateway 转发原始 Bearer Token，Media 再次本地验签。
@@ -243,7 +243,7 @@ POST /api/auth/login
 → 获得 Access Token
 → Gateway 验证并转发
 → Media 本地二次验签
-→ 上传或搜索接口返回业务结果
+→ dev-only 探针接口返回当前认证信息
 ```
 
 到这里，认证最小闭环完成。Access Token 到期后重新登录是当前明确接受的限制。
@@ -256,7 +256,11 @@ POST /api/auth/login
 - [x] Media 接入 Spring Security Resource Server，上传、搜索和图片访问分别要求对应图片 scope；`/actuator/health` 与 `/actuator/info` 保持公开。
 - [x] 新增 Gateway 集成测试，覆盖公开登录路由、无 Token 401、scope 不足 403、非法 Token 401、合法 Token 路由并转发原始 Bearer Token。
 - [x] 新增 Media 安全配置测试，覆盖公开 info、无认证拒绝、scope 不足拒绝、合法 scope 通过。
+- [x] 新增 Media dev-only 认证探针 `GET /api/search/_auth/probe`，在 `dev` profile 下返回当前认证主体、认证状态和权限列表；该接口只用于低成本验证 Gateway → Media 鉴权链路，不作为正式业务接口。
+- [x] 新增 Media 探针测试，覆盖无 Token 401、scope 不足 403、合法 `image:search` scope 返回认证信息。
+- [x] 新增 Gateway 探针路径测试，确认 `/api/search/_auth/probe` 复用 `/api/search/**` 路由和 `image:search` 权限，并转发原始 Bearer Token。
 - 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" -pl gateway-service,media-search-service -am "-Dtest=GatewaySecurityIntegrationTest,MediaSecurityConfigurationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test` 通过。
+- 探针切片验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" -pl media-search-service -am "-Dtest=MediaAuthProbeControllerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test` 通过；`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" -pl gateway-service -am "-Dtest=GatewaySecurityIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test` 通过。
 - 扩展验证：`gateway-service` 全模块测试通过；`media-search-service` 全模块测试仍失败在既有 `ImageAssetMapper` 缺少 `sqlSessionFactory/sqlSessionTemplate` 的 Spring 上下文问题，不是本次安全规则的 401/403 断言失败。
 
 ---

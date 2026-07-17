@@ -102,7 +102,9 @@ class AuthControllerTest {
         when(loginUserUseCase.login(any(LoginUserCommand.class)))
                 .thenReturn(new LoginUserResult(
                         "header.payload.signature",
-                        Instant.parse("2026-07-17T10:30:00Z")));
+                        Instant.parse("2026-07-17T10:30:00Z"),
+                        "refresh-token-raw",
+                        Instant.parse("2026-07-17T11:00:00Z")));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -119,7 +121,11 @@ class AuthControllerTest {
                         .value("header.payload.signature"))
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.expiresAt")
-                        .value("2026-07-17T10:30:00Z"));
+                        .value("2026-07-17T10:30:00Z"))
+                .andExpect(jsonPath("$.refreshToken")
+                        .value("refresh-token-raw"))
+                .andExpect(jsonPath("$.refreshTokenExpiresAt")
+                        .value("2026-07-17T11:00:00Z"));
 
         verify(loginUserUseCase).login(
                 org.mockito.ArgumentMatchers.argThat(command ->
@@ -136,14 +142,18 @@ class AuthControllerTest {
         LoginUserResponse response = new LoginUserResponse(
                 "header.payload.signature",
                 "Bearer",
-                Instant.parse("2026-07-17T10:30:00Z"));
+                Instant.parse("2026-07-17T10:30:00Z"),
+                "refresh-token-raw",
+                Instant.parse("2026-07-17T11:00:00Z"));
 
         assertThat(request.toString())
                 .contains("password=PROTECTED")
                 .doesNotContain("secret123");
         assertThat(response.toString())
                 .contains("accessToken=PROTECTED")
-                .doesNotContain("header.payload.signature");
+                .contains("refreshToken=PROTECTED")
+                .doesNotContain("header.payload.signature")
+                .doesNotContain("refresh-token-raw");
     }
 
     @Test

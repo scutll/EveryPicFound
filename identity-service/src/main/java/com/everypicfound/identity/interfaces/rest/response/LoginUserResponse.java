@@ -10,18 +10,24 @@ import java.time.Instant;
 public record LoginUserResponse(
         String accessToken,
         String tokenType,
-        Instant expiresAt) {
+        Instant expiresAt,
+        String refreshToken,
+        Instant refreshTokenExpiresAt) {
 
     public static LoginUserResponse from(LoginUserResult result) {
         return new LoginUserResponse(
                 result.accessToken(),
                 result.tokenType(),
-                result.expiresAt());
+                result.expiresAt(),
+                result.refreshToken(),
+                result.refreshTokenExpiresAt());
     }
 
     @Override
     public String toString() {
         return "LoginUserResponse[accessToken=PROTECTED, tokenType="
-                + tokenType + ", expiresAt=" + expiresAt + "]";
+                + tokenType + ", expiresAt=" + expiresAt
+                + ", refreshToken=PROTECTED, refreshTokenExpiresAt="
+                + refreshTokenExpiresAt + "]";
     }
 }

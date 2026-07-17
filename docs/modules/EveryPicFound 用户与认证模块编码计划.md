@@ -206,6 +206,8 @@ POST /api/auth/login
 
 ## 阶段 2：受保护访问闭环
 
+**状态：进行中，已完成 Gateway 与 Media 的最小 Resource Server 接入**
+
 ### 用户结果
 
 登录用户可以携带 Access Token，通过 Gateway 调用现有图片上传或搜索接口；未登录或 Token 无效的请求被拒绝。
@@ -245,6 +247,17 @@ POST /api/auth/login
 ```
 
 到这里，认证最小闭环完成。Access Token 到期后重新登录是当前明确接受的限制。
+
+### 当前进展记录
+
+- [x] `security-contract` 增加可复用的 JWT audience、必需 Claim 校验和 RSA 公钥 PEM 加载工具。
+- [x] Gateway 接入 Spring Security Resource Server，使用 Identity 公钥本地校验 Access Token，并按路由要求 `image:search`、`image:upload`、`image:read`、`user:read`、`user:write`。
+- [x] Gateway 路由配置更新为 Spring Cloud Gateway 2025 的 `spring.cloud.gateway.server.webflux.routes` 前缀；阶段 2 不保留 `/api/sessions/**` 路由。
+- [x] Media 接入 Spring Security Resource Server，上传、搜索和图片访问分别要求对应图片 scope；`/actuator/health` 与 `/actuator/info` 保持公开。
+- [x] 新增 Gateway 集成测试，覆盖公开登录路由、无 Token 401、scope 不足 403、非法 Token 401、合法 Token 路由并转发原始 Bearer Token。
+- [x] 新增 Media 安全配置测试，覆盖公开 info、无认证拒绝、scope 不足拒绝、合法 scope 通过。
+- 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" -pl gateway-service,media-search-service -am "-Dtest=GatewaySecurityIntegrationTest,MediaSecurityConfigurationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test` 通过。
+- 扩展验证：`gateway-service` 全模块测试通过；`media-search-service` 全模块测试仍失败在既有 `ImageAssetMapper` 缺少 `sqlSessionFactory/sqlSessionTemplate` 的 Spring 上下文问题，不是本次安全规则的 401/403 断言失败。
 
 ---
 

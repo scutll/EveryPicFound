@@ -4,31 +4,36 @@ spring:
 
   cloud:
     gateway:
-      routes:
-        - id: identity-auth-route
-          uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
-          predicates:
-          - Path=/api/auth/**
+      server:
+        webflux:
+          routes:
+            - id: identity-auth-route
+              uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+              predicates:
+                - Path=/api/auth/**
 
-        - id: identity-user-route
-          uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
-          predicates:
-            - Path=/api/users/**
+            - id: identity-user-route
+              uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+              predicates:
+                - Path=/api/users/**
 
-        - id: identity-session-route
-          uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
-          predicates:
-            - Path=/api/sessions/**
+            - id: media-search-route
+              uri: ${MEDIA_SEARCH_SERVICE_URI:http://localhost:8080}
+              predicates:
+                - Path=/api/search/**
 
-        - id: media-search-route
-          uri: ${MEDIA_SEARCH_SERVICE_URI:http://localhost:8080}
-          predicates:
-            - Path=/api/search/**
+            - id: media-image-route
+              uri: ${MEDIA_SEARCH_SERVICE_URI:http://localhost:8080}
+              predicates:
+                - Path=/api/images/**,/images/**
 
-        - id: media-image-route
-          uri: ${MEDIA_SEARCH_SERVICE_URI:http://localhost:8080}
-          predicates:
-            - Path=/api/images/**,/images/**
+everypicfound:
+  auth:
+    jwt:
+      issuer: ${EPF_JWT_ISSUER:everypicfound-identity}
+      audience: ${EPF_JWT_AUDIENCE:everypicfound-api}
+      clock-skew: ${EPF_JWT_CLOCK_SKEW:30s}
+      public-key-location: ${EPF_JWT_PUBLIC_KEY_LOCATION:file:./config/keys/identity-public.pem}
 
 
 

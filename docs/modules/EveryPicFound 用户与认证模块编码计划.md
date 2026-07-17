@@ -100,8 +100,7 @@
 
 ### 3.2 尚未完成
 
-- `POST /api/auth/login`。
-- 用户名密码校验用例。
+- `POST /api/auth/login` 已完成编码与非 Docker 回归，真实 MySQL 闭环验收待 Docker Desktop 启动后执行。
 - Identity、Gateway 和 Media 的 Resource Server 安全链。
 - 携带 Access Token 访问受保护业务接口。
 - Session 和 Refresh Token。
@@ -127,7 +126,7 @@
 
 ## 阶段 1：Access Token-only 登录
 
-**状态：下一任务**
+**状态：编码完成，MySQL 集成验收待执行**
 
 ### 用户结果
 
@@ -188,6 +187,18 @@ POST /api/auth/login
 - `POST /api/auth/login` 的应用、HTTP 和 MySQL 集成测试通过。
 - 使用注册产生的 BCrypt 摘要能够真实登录。
 - 登录返回的 Token 能被 I-02 的 Decoder 验证。
+
+### 实现记录（2026-07-17）
+
+- [x] 新增登录 Command、UseCase、Result、Request、Response，并对密码和 Access Token 的 `toString()` 脱敏。
+- [x] Repository 按大小写敏感用户名查询账户，并向应用层转换为最小 `UserAuthentication` 视图。
+- [x] 使用 `PresentedPassword` 表达登录凭据，不重复应用当前注册密码策略，避免密码规则演进后阻断旧账户登录。
+- [x] `LoginUserService` 完成账户查询、BCrypt 匹配、状态检查、随机 `sid`、固定 Scope 和 Access Token 签发。
+- [x] 用户不存在、密码错误和非 `NORMAL` 状态统一返回 `401 AUTH_INVALID_CREDENTIALS`；Token 签发和数据访问故障返回统一 500。
+- [x] `identity-service` 定向回归执行 140 项测试，0 失败、0 错误，9 项 MySQL 条件测试跳过。
+- [ ] 已增加“注册写入 BCrypt → 错误密码 401 → 正确密码登录 → Decoder 回读 JWT”的 MySQL 集成测试；当前 Docker Desktop Linux engine 未运行，尚未获得真实数据库通过证据。
+- 全仓回归已尝试；失败集中在 `media-search-service` 既有 Spring 测试上下文缺少 MyBatis `SqlSessionFactory`，与本次 Identity 登录切片无关，因此没有越界修改媒体模块。
+- 环境记录：沙箱中的 Maven 默认本地仓库为 `C:\Users\CodexSandboxOffline\.m2`；本次离线验证显式使用已有 `C:\Users\mxl_scut\.m2\repository`，未修改项目 Maven 配置。
 
 ---
 

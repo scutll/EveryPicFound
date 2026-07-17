@@ -1,8 +1,12 @@
 package com.everypicfound.identity.interfaces.rest.controller;
 
+import com.everypicfound.identity.application.port.in.LoginUserUseCase;
 import com.everypicfound.identity.application.port.in.RegisterUserUseCase;
+import com.everypicfound.identity.application.result.LoginUserResult;
 import com.everypicfound.identity.application.result.RegisterUserResult;
+import com.everypicfound.identity.interfaces.rest.request.LoginUserRequest;
 import com.everypicfound.identity.interfaces.rest.request.RegisterUserRequest;
+import com.everypicfound.identity.interfaces.rest.response.LoginUserResponse;
 import com.everypicfound.identity.interfaces.rest.response.RegisterUserResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,11 +25,17 @@ import java.util.Objects;
 public final class AuthController {
 
     private final RegisterUserUseCase registerUserUseCase;
+    private final LoginUserUseCase loginUserUseCase;
 
-    public AuthController(RegisterUserUseCase registerUserUseCase) {
+    public AuthController(
+            RegisterUserUseCase registerUserUseCase,
+            LoginUserUseCase loginUserUseCase) {
         this.registerUserUseCase = Objects.requireNonNull(
                 registerUserUseCase,
                 "registerUserUseCase");
+        this.loginUserUseCase = Objects.requireNonNull(
+                loginUserUseCase,
+                "loginUserUseCase");
     }
 
     @PostMapping("/register")
@@ -36,5 +46,12 @@ public final class AuthController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(RegisterUserResponse.from(result));
+    }
+
+    @PostMapping("/login")
+    public LoginUserResponse login(@RequestBody LoginUserRequest request) {
+        LoginUserResult result = loginUserUseCase.login(
+                request.toCommand());
+        return LoginUserResponse.from(result);
     }
 }

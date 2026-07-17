@@ -3,7 +3,7 @@ package com.everypicfound.identity.support.error;
 import org.springframework.http.HttpStatus;
 
 /**
- * 用户注册在 HTTP 边界使用的稳定错误码。
+ * 用户与认证 HTTP 边界使用的稳定错误码。
  */
 public enum UserErrorCode {
 
@@ -47,6 +47,10 @@ public enum UserErrorCode {
             "用户名已被使用",
             "username",
             HttpStatus.CONFLICT),
+    AUTH_INVALID_CREDENTIALS(
+            "登录凭据无效",
+            null,
+            HttpStatus.UNAUTHORIZED),
     SYSTEM_INTERNAL_ERROR(
             "服务器内部错误",
             null,

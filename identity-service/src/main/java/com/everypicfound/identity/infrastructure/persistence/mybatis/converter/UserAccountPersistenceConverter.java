@@ -1,6 +1,9 @@
 package com.everypicfound.identity.infrastructure.persistence.mybatis.converter;
 
+import com.everypicfound.identity.domain.enums.AccountStatus;
+import com.everypicfound.identity.domain.model.user.PasswordHash;
 import com.everypicfound.identity.domain.model.user.UserAccount;
+import com.everypicfound.identity.domain.model.user.UserAuthentication;
 import com.everypicfound.identity.infrastructure.persistence.mybatis.po.UserAccountPo;
 import org.springframework.stereotype.Component;
 
@@ -35,11 +38,27 @@ public final class UserAccountPersistenceConverter {
         return po;
     }
 
+    public UserAuthentication toAuthentication(UserAccountPo po) {
+        Objects.requireNonNull(po, "po");
+        return new UserAuthentication(
+                po.getId(),
+                PasswordHash.of(po.getPasswordHash()),
+                AccountStatus.valueOf(po.getStatus()),
+                toInstant(po.getAuthValidAfter()));
+    }
+
     private static LocalDateTime toUtcDateTime(Instant instant) {
         if (instant == null) {
             return null;
         }
         Instant millisecondPrecision = instant.truncatedTo(ChronoUnit.MILLIS);
         return LocalDateTime.ofInstant(millisecondPrecision, ZoneOffset.UTC);
+    }
+
+    private static Instant toInstant(LocalDateTime dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+        return dateTime.toInstant(ZoneOffset.UTC);
     }
 }

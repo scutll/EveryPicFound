@@ -7,6 +7,7 @@ import com.everypicfound.identity.domain.model.user.Username;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
 import com.everypicfound.identity.domain.repository.UserRepository;
 import com.everypicfound.identity.support.security.TestRsaKeyMaterial;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,8 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -64,6 +67,7 @@ class UserRegistrationMySqlIntegrationTest {
             "ConcurrentUser",
             "HttpUser01",
             "HttpDuplicate01",
+            "LoginUser01",
             "BadStatus01",
             "BadVersion01");
 
@@ -103,6 +107,12 @@ class UserRegistrationMySqlIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     @AfterEach
@@ -297,6 +307,68 @@ class UserRegistrationMySqlIntegrationTest {
                 .andExpect(jsonPath("$.errorCode")
                         .value("USER_USERNAME_ALREADY_EXISTS"))
                 .andExpect(jsonPath("$.field").value("username"));
+    }
+
+    @Test
+    void registeredAccountLogsInWithStoredBcryptHashAndReceivesJwt()
+            throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "LoginUser01",
+                                  "password": "secret123"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "LoginUser01",
+                                  "password": "wrong123"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode")
+                        .value("AUTH_INVALID_CREDENTIALS"));
+
+        String responseBody = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "LoginUser01",
+                                  "password": "secret123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.expiresAt").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String tokenValue = objectMapper.readTree(responseBody)
+                .path("accessToken")
+                .asText();
+        Jwt jwt = jwtDecoder.decode(tokenValue);
+        Long userId = jdbcTemplate.queryForObject(
+                "SELECT id FROM user_account WHERE username = ?",
+                Long.class,
+                "LoginUser01");
+        LocalDateTime lastLoginTime = jdbcTemplate.queryForObject(
+                "SELECT last_login_time FROM user_account WHERE username = ?",
+                LocalDateTime.class,
+                "LoginUser01");
+
+        assertThat(tokenValue).isNotBlank();
+        assertThat(jwt.getSubject()).isEqualTo(String.valueOf(userId));
+        assertThat(jwt.getClaimAsString("sid")).isNotBlank();
+        assertThat(jwt.getClaimAsString("scope"))
+                .isEqualTo("image:read image:search image:upload "
+                        + "user:read user:write");
+        assertThat(lastLoginTime).isNull();
     }
 
     private UserAccount account(String username) {

@@ -1,5 +1,6 @@
 package com.everypicfound.identity.interfaces.rest.exception;
 
+import com.everypicfound.identity.application.exception.InvalidCredentialsException;
 import com.everypicfound.identity.domain.model.user.InvalidPasswordException;
 import com.everypicfound.identity.domain.model.user.InvalidNicknameException;
 import com.everypicfound.identity.domain.model.user.InvalidUsernameException;
@@ -9,6 +10,7 @@ import com.everypicfound.identity.domain.model.user.UsernameViolation;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
 import com.everypicfound.identity.interfaces.rest.response.ApiErrorResponse;
 import com.everypicfound.identity.support.error.UserErrorCode;
+import com.everypicfound.identity.support.exception.AccessTokenIssuanceException;
 import com.everypicfound.identity.support.exception.PasswordHashingException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,8 +51,14 @@ public class IdentityExceptionHandler {
         return responseFor(UserErrorCode.USER_USERNAME_ALREADY_EXISTS);
     }
 
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidCredentials() {
+        return responseFor(UserErrorCode.AUTH_INVALID_CREDENTIALS);
+    }
+
     @ExceptionHandler({
             PasswordHashingException.class,
+            AccessTokenIssuanceException.class,
             DataAccessException.class
     })
     public ResponseEntity<ApiErrorResponse> handleInternalFailure(

@@ -2,6 +2,7 @@ package com.everypicfound.identity.infrastructure.security.password.adapter;
 
 import com.everypicfound.identity.application.port.out.PasswordHasher;
 import com.everypicfound.identity.domain.model.user.PasswordHash;
+import com.everypicfound.identity.domain.model.user.PresentedPassword;
 import com.everypicfound.identity.domain.model.user.RawPassword;
 import com.everypicfound.identity.support.exception.PasswordHashingException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -38,13 +39,15 @@ public final class BCryptPasswordHasher implements PasswordHasher {
 
     @Override
     public boolean matches(
-            RawPassword rawPassword,
+            PresentedPassword presentedPassword,
             PasswordHash passwordHash) {
-        Objects.requireNonNull(rawPassword, "rawPassword");
+        Objects.requireNonNull(
+                presentedPassword,
+                "presentedPassword");
         Objects.requireNonNull(passwordHash, "passwordHash");
         try {
             return passwordEncoder.matches(
-                    rawPassword.value(),
+                    presentedPassword.value(),
                     passwordHash.value());
         } catch (RuntimeException exception) {
             throw new PasswordHashingException(

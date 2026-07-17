@@ -32,6 +32,13 @@ server:
   port: 8080
 
 everypicfound:
+  auth:
+    jwt:
+      issuer: ${EPF_JWT_ISSUER:everypicfound-identity}
+      audience: ${EPF_JWT_AUDIENCE:everypicfound-api}
+      clock-skew: ${EPF_JWT_CLOCK_SKEW:30s}
+      public-key-location: ${EPF_JWT_PUBLIC_KEY_LOCATION:file:./config/keys/identity-public.pem}
+
   metrics:
     enabled: true
 

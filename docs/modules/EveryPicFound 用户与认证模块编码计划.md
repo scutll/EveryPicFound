@@ -271,26 +271,61 @@ POST /api/auth/login
 
 用户登录后具有可识别的会话；Access Token 到期时，可以使用 Refresh Token 获取新的 Access Token，而不必重新输入密码。
 
-### 当前简单方案
+### 拆分原则
 
-- 本阶段开始时再确认 `user_session` 和 `user_refresh_token` 的最小字段。
+阶段 3 不再一次性做完所有会话能力，拆成两个连续切片：
+
+1. **阶段 3A：登录创建持久化 Session 与首张 Refresh Token。**
+2. **阶段 3B：实现 Refresh Token 换发 Access Token，并处理基础轮换。**
+
+这样可以先把登录后的服务端会话锚点建立起来，再围绕这个锚点继续做刷新、退出和撤销，避免在一个任务里同时修改登录、刷新、Cookie、并发轮换和撤销策略。
+
+### 阶段 3A：登录请求与派发链路
+
+#### 当前简单方案
+
 - 使用 Flyway 创建两张表，MySQL 作为唯一权威状态。
+- `user_session` 使用随机 `session_id` 作为持久化会话 ID。
 - Refresh Token 使用高熵随机值，数据库只保存不可逆摘要。
-- 登录事务同时创建 Session 和首张 Refresh Token；事务提交后再签发 Access Token。
-- Access Token 的 `sid` 改为持久化 Session ID。
-- 实现 `POST /api/auth/refresh`。
-- Refresh Token 每次成功使用后轮换，使用 MySQL 条件更新保证并发请求只有一个成功。
-- Cookie 属性、CSRF/Origin 和轮换 TTL 在本阶段编码前集中确认。
+- 登录事务中创建 Session、保存首张 Refresh Token 摘要并签发 Access Token；如果签发或保存失败，数据库事务回滚，接口不返回 Token。
+- Access Token 的 `sid` 使用已经落库的 Session ID。
+- 为了保持后端职责清晰，当前登录响应以 JSON 返回 Access Token 和 Refresh Token；Cookie、CSRF/Origin 防护留到明确采用浏览器 Cookie 方案时再补。
 
-### 测试重点
+#### 测试重点
 
-- 登录事务失败时不能返回任何 Token。
+- 登录成功时创建 Session 与 Refresh Token 摘要，并返回 Access Token 与 Refresh Token 原文。
+- 登录失败时不创建 Session、不生成 Refresh Token、不签发 Access Token。
 - 数据库不保存 Refresh Token 原文。
-- 正常刷新成功并轮换旧 Token。
-- 同一 Refresh Token 并发使用时只有一个请求成功。
+- 返回对象与日志输出不泄漏 Access Token 或 Refresh Token。
+- MyBatis 映射能正确保存 Session 和 Refresh Token 摘要。
+
+#### 当前进展记录
+
+- [x] 新增 `user_session` 与 `user_refresh_token` Flyway 迁移。
+- [x] 登录成功后创建持久化 Session；Session TTL 当前固定为 1 天。
+- [x] 登录成功后生成 URL-safe 高熵 Refresh Token；Refresh Token TTL 当前固定为 1 小时。
+- [x] 数据库仅保存 Refresh Token 的 SHA-256 摘要，不保存原文。
+- [x] 登录响应 JSON 增加 `refreshToken` 与 `refreshTokenExpiresAt`。
+- [x] Access Token 的 `sid` 使用持久化 Session ID。
+- 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" -pl identity-service -am test` 通过。
+
+### 阶段 3B：Refresh Token 换发链路
+
+#### 当前简单方案
+
+- 实现 `POST /api/auth/refresh`。
+- 客户端提交 Refresh Token，服务端计算摘要后查询 MySQL。
+- 校验 Token 状态、过期时间和所属 Session 状态。
+- 成功后签发新的 Access Token。
+- 是否在首版立刻轮换 Refresh Token，在阶段 3B 开始前再根据实现复杂度确认；默认倾向简单正确，必要时使用 MySQL 条件更新保证并发下只有一个请求成功。
+
+#### 测试重点
+
+- 正常刷新成功，并在选定轮换方案后覆盖对应状态变化。
+- 同一 Refresh Token 并发使用时不能产生多个有效的新凭据。
 - 过期、已使用、已撤销的 Token 不能刷新。
 
-### 明确不做
+### 阶段 3 明确不做
 
 - Redis Session 缓存或 deny Key。
 - Lua、Outbox、RocketMQ 和跨存储补偿。

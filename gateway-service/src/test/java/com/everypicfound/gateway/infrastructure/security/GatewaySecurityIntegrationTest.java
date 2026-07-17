@@ -129,6 +129,23 @@ class GatewaySecurityIntegrationTest {
     }
 
     @Test
+    void protectedMediaAuthProbeRouteUsesSearchScopeAndForwardsBearerToken() {
+        DOWNSTREAM.clear();
+        String token = JWT_KEYS.token(List.of(SecurityScopes.IMAGE_SEARCH));
+
+        webTestClient.get()
+                .uri("/api/search/_auth/probe")
+                .headers(headers -> headers.setBearerAuth(token))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo("GET /api/search/_auth/probe");
+
+        assertThat(DOWNSTREAM.requests()).hasSize(1);
+        assertThat(DOWNSTREAM.requests().get(0).authorization())
+                .isEqualTo("Bearer " + token);
+    }
+
+    @Test
     void protectedMediaRouteRejectsInvalidTokenBeforeRouting() {
         DOWNSTREAM.clear();
 

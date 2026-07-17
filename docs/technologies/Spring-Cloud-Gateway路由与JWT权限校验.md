@@ -270,6 +270,14 @@ public class SearchController {
 
 它会被 Gateway 的 `/api/search/**` 路由匹配，也会被 Gateway 和 Media 的 `SCOPE_image:search` 权限规则保护。
 
+为了在机器内存有限、真实搜索链路暂不启动时低成本验证 Gateway → Media 的鉴权闭环，EveryPicFound 当前还提供了一个仅在 `dev` profile 下启用的探针接口：
+
+```text
+GET /api/search/_auth/probe
+```
+
+该接口复用 `/api/search/**` 路由和 `image:search` 权限规则，返回当前认证主体、认证状态和权限列表。它只用于开发验证，不作为正式业务接口。
+
 如果以后某个 Controller 方法需要更细粒度权限，可以再启用方法级授权，例如：
 
 ```java
@@ -324,6 +332,7 @@ sequenceDiagram
 | Token 签名错误或过期 | `401 Unauthorized` | Token 无效 |
 | Token 有效但缺少 `image:search` | `403 Forbidden` | 已认证但无权限 |
 | Token 有效且包含 `image:search` | 转发到 Media | 鉴权通过 |
+| Token 有效且访问 `/api/search/_auth/probe` | 返回认证主体和权限列表 | dev-only 探针验证通过 |
 
 ## 10. 当前边界与后续演进
 

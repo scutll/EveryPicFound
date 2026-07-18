@@ -1,11 +1,14 @@
 package com.everypicfound.identity.interfaces.rest.controller;
 
 import com.everypicfound.identity.application.command.LoginUserCommand;
+import com.everypicfound.identity.application.command.LogoutCurrentSessionCommand;
 import com.everypicfound.identity.application.command.RegisterUserCommand;
 import com.everypicfound.identity.application.command.RefreshTokenCommand;
 import com.everypicfound.identity.application.exception.InvalidCredentialsException;
+import com.everypicfound.identity.application.exception.InvalidAccessTokenException;
 import com.everypicfound.identity.application.exception.InvalidRefreshTokenException;
 import com.everypicfound.identity.application.port.in.LoginUserUseCase;
+import com.everypicfound.identity.application.port.in.LogoutCurrentSessionUseCase;
 import com.everypicfound.identity.application.port.in.RegisterUserUseCase;
 import com.everypicfound.identity.application.port.in.RefreshTokenUseCase;
 import com.everypicfound.identity.application.result.LoginUserResult;
@@ -24,10 +27,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,6 +59,12 @@ class AuthControllerTest {
 
     @MockitoBean
     private RefreshTokenUseCase refreshTokenUseCase;
+
+    @MockitoBean
+    private LogoutCurrentSessionUseCase logoutCurrentSessionUseCase;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     @Test
     void registersUserAndReturnsCreatedPublicResponse() throws Exception {
@@ -239,6 +252,38 @@ class AuthControllerTest {
     }
 
     @Test
+    void logsOutCurrentSessionUsingBearerAccessToken() throws Exception {
+        when(jwtDecoder.decode("header.payload.signature"))
+                .thenReturn(jwt("header.payload.signature", "42", "session-123"));
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .header("Authorization",
+                                "Bearer header.payload.signature"))
+                .andExpect(status().isNoContent());
+
+        verify(logoutCurrentSessionUseCase).logout(
+                org.mockito.ArgumentMatchers.argThat(command ->
+                        command.userId() == 42L
+                                && command.sessionId().equals("session-123")));
+    }
+
+    @Test
+    void returnsUnauthorizedWhenLogoutAccessTokenIsInvalid()
+            throws Exception {
+        when(jwtDecoder.decode("bad-token"))
+                .thenThrow(new JwtException("bad token"));
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .header("Authorization", "Bearer bad-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode")
+                        .value("AUTH_INVALID_ACCESS_TOKEN"))
+                .andExpect(jsonPath("$.message")
+                        .value("访问令牌无效"))
+                .andExpect(jsonPath("$.field").value((Object) null));
+    }
+
+    @Test
     void hidesAccessTokenIssuanceFailureBehindInternalError()
             throws Exception {
         when(loginUserUseCase.login(any(LoginUserCommand.class)))
@@ -343,5 +388,16 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.errorCode")
                         .value("SYSTEM_INTERNAL_ERROR"))
                 .andExpect(jsonPath("$.field").value((Object) null));
+    }
+
+    private static Jwt jwt(String tokenValue, String subject, String sessionId) {
+        return new Jwt(
+                tokenValue,
+                Instant.parse("2026-07-18T02:00:00Z"),
+                Instant.parse("2026-07-18T02:30:00Z"),
+                Map.of("alg", "RS256"),
+                Map.of(
+                        "sub", subject,
+                        "sid", sessionId));
     }
 }

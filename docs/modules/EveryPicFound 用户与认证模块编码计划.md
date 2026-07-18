@@ -355,14 +355,17 @@ POST /api/auth/login
 ### 当前简单方案
 
 - 实现 `POST /api/auth/logout`。
+- 客户端携带 `Authorization: Bearer <access-token>`；Identity Service 使用现有 `JwtDecoder` 验签并读取 `sub` 和 `sid`。
 - 在一个 MySQL 事务中撤销当前 Session 及其 ACTIVE Refresh Token。
-- 清理客户端 Refresh Cookie。
+- 当前阶段 Refresh Token 通过 JSON 返回和提交，不使用 Refresh Cookie；客户端退出时删除本地保存的 Access Token 与 Refresh Token。
 - 重复退出返回稳定结果，不恢复已经撤销的状态。
-- Refresh Token 重放先只影响其所属 Session。
+- 当前阶段不接入 Redis、MQ、Outbox 或跨服务事件通知。
 
 ### 当前明确限制
 
 基础版本不查询 Redis deny 状态，因此退出前已经签发的 Access Token 最长仍可使用至 30 分钟 TTL 到期。客户端退出时应立即删除本地 Access Token；服务端即时拒绝旧 Access Token 属于后续优化，而不是本阶段的隐藏完成条件。
+
+当前 Gateway 对 `/api/auth/**` 仍是放行规则；`/api/auth/logout` 的 Access Token 校验发生在 Identity Service。后续如果要让 Gateway 在入口处直接拒绝未认证退出请求，可以单独调整 Gateway 路由鉴权规则。
 
 ### 测试重点
 
@@ -370,6 +373,15 @@ POST /api/auth/login
 - 退出后刷新失败。
 - 重复退出保持幂等。
 - 其他 Session 不受当前 Session 退出影响。
+
+#### 当前进展记录
+
+- [x] 新增 `LogoutCurrentSessionUseCase` / `LogoutCurrentSessionService`，完成当前 Session 退出编排。
+- [x] 新增 `POST /api/auth/logout`，从 Bearer Access Token 解析 `sub` 和 `sid` 后撤销。
+- [x] `user_session` 使用 MySQL 条件更新 `ACTIVE -> REVOKED`，并校验 `session_id + user_id`。
+- [x] `user_refresh_token` 按 `session_id + ACTIVE` 批量更新为 `REVOKED`。
+- [x] Access Token 缺失、格式错误、验签失败或必要 Claim 缺失统一映射为 401 `AUTH_INVALID_ACCESS_TOKEN`。
+- 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" "-Dsurefire.failIfNoSpecifiedTests=false" -pl identity-service -am "-Dtest=LogoutCurrentSessionServiceTest,LogoutCurrentSessionCommandTest,AuthControllerTest,MyBatisUserSessionRepositoryTest,MyBatisUserRefreshTokenRepositoryTest" test` 通过。
 
 ---
 

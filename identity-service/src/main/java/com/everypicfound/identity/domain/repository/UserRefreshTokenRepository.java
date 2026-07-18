@@ -16,4 +16,6 @@ public interface UserRefreshTokenRepository {
     Optional<RefreshTokenSession> findSessionByTokenHash(String tokenHash);
 
     boolean markActiveTokenAsUsed(String tokenHash, Instant usedAt);
+
+    int revokeActiveTokensBySessionId(String sessionId, Instant revokedAt);
 }

@@ -115,4 +115,15 @@ class MyBatisUserRefreshTokenRepositoryTest {
                 Instant.parse("2026-07-17T10:40:00.123Z")))
                 .isFalse();
     }
+
+    @Test
+    void revokesActiveRefreshTokensBySessionId() {
+        when(mapper.update(any(), any())).thenReturn(2);
+
+        int affectedRows = repository.revokeActiveTokensBySessionId(
+                "session-123",
+                Instant.parse("2026-07-18T02:00:00.123Z"));
+
+        assertThat(affectedRows).isEqualTo(2);
+    }
 }

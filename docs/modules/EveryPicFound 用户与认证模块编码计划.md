@@ -101,24 +101,28 @@
 
 ### 3.2 尚未完成
 
-- Identity、Gateway 和 Media 的 Resource Server 安全链。
-- 携带 Access Token 访问受保护业务接口。
-- Session 和 Refresh Token。
-- Token 刷新与退出登录。
-- 当前用户资料、修改密码和账号注销。
+- 修改密码。
+- 账号注销。
+- 完整业务接口与真实 Media 用户数据的联动。
 - Redis 认证状态、Lua、Outbox 和 RocketMQ 认证消息。
 
 ### 3.3 当前最近目标
 
-第一目标不是建设最终会话架构，而是完成：
+当前第一目标不是建设最终分布式认证架构，而是完成用户与认证的基础功能闭环：
 
 ```text
 注册
 → 登录
 → 获得 Access Token
 → 通过 Gateway 访问受保护的 Media 接口
-→ Gateway 与 Media 正确识别用户身份
+→ Refresh Token 续期
+→ 退出后不能再次刷新
+→ 查询和修改当前用户资料
+→ 修改密码
+→ 注销账户
 ```
+
+其中注册、登录、Gateway/Media 鉴权、Session、Refresh Token、退出当前会话、查询当前用户资料和修改基础资料已经完成；下一步优先完成修改密码与账号注销，随后再进入点赞、评论等业务功能。
 
 ---
 
@@ -365,7 +369,7 @@ POST /api/auth/login
 
 基础版本不查询 Redis deny 状态，因此退出前已经签发的 Access Token 最长仍可使用至 30 分钟 TTL 到期。客户端退出时应立即删除本地 Access Token；服务端即时拒绝旧 Access Token 属于后续优化，而不是本阶段的隐藏完成条件。
 
-当前 Gateway 对 `/api/auth/**` 仍是放行规则；`/api/auth/logout` 的 Access Token 校验发生在 Identity Service。后续如果要让 Gateway 在入口处直接拒绝未认证退出请求，可以单独调整 Gateway 路由鉴权规则。
+当前 Gateway 已对 `POST /api/auth/logout` 单独要求认证，未携带有效 Access Token 的退出请求会在 Gateway 被 401 拦截，不会路由到 Identity Service。Identity Service 仍会再次解码 Bearer Access Token 并读取 `sub` 与 `sid`，作为服务自身的安全边界。
 
 ### 测试重点
 
@@ -381,11 +385,15 @@ POST /api/auth/login
 - [x] `user_session` 使用 MySQL 条件更新 `ACTIVE -> REVOKED`，并校验 `session_id + user_id`。
 - [x] `user_refresh_token` 按 `session_id + ACTIVE` 批量更新为 `REVOKED`。
 - [x] Access Token 缺失、格式错误、验签失败或必要 Claim 缺失统一映射为 401 `AUTH_INVALID_ACCESS_TOKEN`。
+- [x] Gateway 将 `POST /api/auth/logout` 从 `/api/auth/**` 公开规则中提前分流为 authenticated 路由；登录、注册和刷新仍保持公开入口。
 - 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" "-Dsurefire.failIfNoSpecifiedTests=false" -pl identity-service -am "-Dtest=LogoutCurrentSessionServiceTest,LogoutCurrentSessionCommandTest,AuthControllerTest,MyBatisUserSessionRepositoryTest,MyBatisUserRefreshTokenRepositoryTest" test` 通过。
+- Gateway 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" "-Dsurefire.failIfNoSpecifiedTests=false" -pl gateway-service -am "-Dtest=GatewaySecurityIntegrationTest" test` 通过。
 
 ---
 
 ## 阶段 5：用户信息与账户操作
+
+**状态：进行中，已完成当前用户资料查询与基础资料修改**
 
 ### 用户结果
 
@@ -402,6 +410,7 @@ POST /api/auth/login
 
 - 用户信息直接查询 MySQL，不建立资料缓存。
 - 资料修改只更新账户表，不发布事件。
+- 当前已落地字段为 `nickname` 与 `avatarUrl`；`displayName` 由服务端计算，昵称为空时回退为 `username`。
 - 修改密码和注销使用 MySQL 事务更新用户与 Session 权威状态。
 - 旧 Access Token 仍遵循阶段 4 的自然过期限制；即时全局失效留到优化阶段。
 - 没有真实下游消费者时，不创建用户生命周期 Topic 或 Outbox 事件。
@@ -413,6 +422,15 @@ POST /api/auth/login
 - 修改密码后旧密码不能再次登录，已有 Refresh Token 不能刷新。
 - 注销后账户不能登录，原用户名可以重新注册。
 - 密码、Token、Cookie 和内部摘要不进入日志或响应。
+
+### 当前进展记录
+
+- [x] 新增 `GET /api/users/me`，从 Bearer Access Token 的 `sub` 解析当前用户 ID，查询 `user_account` 中的基础资料。
+- [x] 新增 `PATCH /api/users/me/profile`，支持修改或清空昵称、头像 URL；空昵称展示名回退为用户名。
+- [x] 当前资料接口只对 `NORMAL` 用户返回资料；用户不存在或不可用返回 `404 USER_PROFILE_NOT_FOUND`。
+- [x] Repository 支持按用户 ID 读取资料，并使用 MyBatis-Plus 条件更新当前用户资料和 `updated_time`。
+- 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" "-Dsurefire.failIfNoSpecifiedTests=false" -pl identity-service -am "-Dtest=UserProfileServiceTest,UserControllerTest,MyBatisUserRepositoryTest" test` 通过。
+- 回归证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" -pl identity-service -am test` 通过；`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" -pl gateway-service -am test` 通过。
 
 ---
 

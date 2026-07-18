@@ -32,6 +32,7 @@ public class GatewaySecurityConfiguration {
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
                         .pathMatchers("/api/auth/**").permitAll()
                         .pathMatchers(HttpMethod.POST, "/api/images/upload")
                         .hasAuthority("SCOPE_" + SecurityScopes.IMAGE_UPLOAD)

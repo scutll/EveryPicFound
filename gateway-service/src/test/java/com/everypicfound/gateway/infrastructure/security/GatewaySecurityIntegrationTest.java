@@ -86,6 +86,35 @@ class GatewaySecurityIntegrationTest {
     }
 
     @Test
+    void logoutRouteRequiresTokenBeforeRouting() {
+        DOWNSTREAM.clear();
+
+        webTestClient.post()
+                .uri("/api/auth/logout")
+                .exchange()
+                .expectStatus().isUnauthorized();
+
+        assertThat(DOWNSTREAM.requests()).isEmpty();
+    }
+
+    @Test
+    void logoutRouteForwardsBearerTokenAfterAuthentication() {
+        DOWNSTREAM.clear();
+        String token = JWT_KEYS.token(List.of(SecurityScopes.USER_READ));
+
+        webTestClient.post()
+                .uri("/api/auth/logout")
+                .headers(headers -> headers.setBearerAuth(token))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo("POST /api/auth/logout");
+
+        assertThat(DOWNSTREAM.requests()).hasSize(1);
+        assertThat(DOWNSTREAM.requests().get(0).authorization())
+                .isEqualTo("Bearer " + token);
+    }
+
+    @Test
     void protectedMediaRouteRejectsMissingTokenBeforeRouting() {
         DOWNSTREAM.clear();
 

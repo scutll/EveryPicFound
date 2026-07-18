@@ -3,6 +3,7 @@ package com.everypicfound.identity.interfaces.rest.exception;
 import com.everypicfound.identity.application.exception.InvalidCredentialsException;
 import com.everypicfound.identity.application.exception.InvalidAccessTokenException;
 import com.everypicfound.identity.application.exception.InvalidRefreshTokenException;
+import com.everypicfound.identity.application.exception.UserProfileNotFoundException;
 import com.everypicfound.identity.domain.model.user.InvalidPasswordException;
 import com.everypicfound.identity.domain.model.user.InvalidNicknameException;
 import com.everypicfound.identity.domain.model.user.InvalidUsernameException;
@@ -66,6 +67,11 @@ public class IdentityExceptionHandler {
     @ExceptionHandler(InvalidAccessTokenException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidAccessToken() {
         return responseFor(UserErrorCode.AUTH_INVALID_ACCESS_TOKEN);
+    }
+
+    @ExceptionHandler(UserProfileNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleUserProfileNotFound() {
+        return responseFor(UserErrorCode.USER_PROFILE_NOT_FOUND);
     }
 
     @ExceptionHandler({

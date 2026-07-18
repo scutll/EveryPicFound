@@ -12,7 +12,7 @@
 
 ## 2. 测试范围与执行纪律
 
-本次复测严格对照 [EveryPicFound_性能测试报告_20260701.md](/abs/path/E:/EveryPicFound/docs/EveryPicFound_性能测试报告_20260701.md) 的测试项执行：
+本次复测严格对照历史报告 `EveryPicFound_性能测试报告_20260701.md` 的测试项执行；该历史报告当前未纳入本仓库：
 
 - 文本搜索 baseline
 - 文本搜索完整页面 baseline
@@ -47,7 +47,7 @@
 
 ## 3. 动态批处理参数快照
 
-本次复测对应代码中的动态批处理参数来自 [modelservice/config.py](/abs/path/E:/EveryPicFound/modelservice/config.py)：
+本次复测对应代码中的动态批处理参数来自 [modelservice/config.py](../../modelservice/config.py)：
 
 | 参数 | 数值 |
 |---|---:|

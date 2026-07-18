@@ -6,8 +6,14 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import com.everypicfound.imageasset.infrastructure.mapper.ImageAssetMapper;
+import com.everypicfound.vectorindex.infrastructure.qdrant.QdrantVectorMapper;
+
 @SpringBootApplication
-@MapperScan("com.everypicfound.**.infrastructure.mapper")
+@MapperScan(basePackageClasses = {
+		ImageAssetMapper.class,
+		QdrantVectorMapper.class
+})
 @ConfigurationPropertiesScan
 @EnableScheduling
 public class MediaSearchServiceApplication {

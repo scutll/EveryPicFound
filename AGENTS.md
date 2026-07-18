@@ -8,14 +8,17 @@ EveryPicFound 是一个多模态搜图项目，核心链路是：
 
 仓库当前包含：
 
-- `everypicfound-backend`：Spring Boot 后端，主业务核心。
+- `identity-service`：用户、认证、Token 与 Session 等身份能力。
+- `gateway-service`：统一入口、路由、认证状态校验与授权。
+- `media-search-service`：图片资产、向量化和搜索主业务。
+- `security-contract`：跨服务共享的最小安全契约。
 - `modelservice`：Python/FastAPI 模型服务，提供图片/文本向量化。
 - `everypicfound-frontend`：前端展示与搜索页面。
 - `docs`：项目设计与开发文档，优先阅读。
 
-## 后端模块结构
+## 后端服务与模块结构
 
-`everypicfound-backend` 采用按业务模块拆分、模块内部分层的结构，主模块如下：
+`media-search-service` 采用按业务模块拆分、模块内部分层的结构，主模块如下：
 
 - `imageasset`：图片上传、元数据、去重、状态管理、图片访问。
 - `vectorization`：异步向量化任务发布、处理、失败重试、查询向量化与图文融合。
@@ -35,23 +38,36 @@ EveryPicFound 是一个多模态搜图项目，核心链路是：
 
 ## 建议优先阅读
 
-先读 `docs/`，再看代码。建议顺序：
+先读 `docs/README.md` 了解文档分类、权威来源和维护规则，再看相关文档与代码。建议顺序：
 
-1. `docs/EveryPicFound_PRD.md`
-2. `docs/系统架构设计文档.md`
-3. `docs/模块设计文档.md`
-4. `docs/数据模型设计文档.md`
-5. `docs/interface_docs.md`
-6. `docs/第一轮任务文档 - 图片上传链路.md`
-7. `docs/第二轮任务文档-图片向量化与向量入库链路.md`
-8. `docs/Python模型服务架构设计文档.md`
+1. `docs/project/EveryPicFound_PRD.md`
+2. `docs/project/系统架构设计文档.md`
+3. `docs/project/模块设计文档.md`
+4. `docs/project/数据模型设计文档.md`
+5. `docs/project/interface_docs.md`
+6. `docs/modules/第一轮任务文档 - 图片上传链路.md`
+7. `docs/modules/第二轮任务文档-图片向量化与向量入库链路.md`
+8. `docs/modules/Python模型服务架构设计文档.md`
 
 如果是直接进入后端开发，优先看这些代码入口：
 
-- `everypicfound-backend/src/main/java/com/everypicfound/imageasset/application/service/DefaultImageAssetApplicationService.java`
-- `everypicfound-backend/src/main/java/com/everypicfound/vectorization/application/processor/DefaultImageVectorizationProcessor.java`
-- `everypicfound-backend/src/main/java/com/everypicfound/search/application/pipeline/DefaultSearchPipeline.java`
-- `everypicfound-backend/src/main/resources/application.yaml`
+- `identity-service/src/main/java/com/everypicfound/identity/IdentityServiceApplication.java`
+- `identity-service/src/main/resources/application.yaml`
+- `gateway-service/src/main/java/com/everypicfound/gateway/GatewayApplication.java`
+- `gateway-service/src/main/resources/application.yaml`
+- `media-search-service/src/main/java/com/everypicfound/MediaSearchServiceApplication.java`
+- `media-search-service/src/main/resources/application.yaml`
+
+## 文档记录与维护
+
+- 开始任务前先阅读 `docs/README.md`，再读取与当前业务模块、技术和测试相关的索引及权威文档。
+- 遇到技术选型、参数选择、接口或数据变化、缓存或消息契约、事务和并发规则、编码规范、工具用法、测试结果、故障原因或重要修正时，检查是否需要记录或更新文档。
+- 写文档前先与用户讨论记录范围，确认是更新现有文档还是新增文档，以及内容应归入 `project`、`modules`、`technologies` 或 `reports`。
+- `modules` 记录 EveryPicFound 中采用的具体方案和理由；`technologies` 记录可脱离项目复用的通用原理与用法。完整内容只保留一份，其他位置使用摘要和链接。
+- 代码或配置变化导致旧文档失效时，必须在当前任务内同步修正文档；暂未迁移或文件较旧不能成为保留错误内容的理由。
+- 编码切片结束时记录关键决策、验证证据、使用命令、失败原因和遗留问题；出现长期复用价值时，再提炼为通用技术分析。
+- 文档中不得记录密码、Token、Cookie、真实密钥或其他敏感内容；修改或移动文档后检查所有本地链接。
+- `docs/` 只保存用户确认需要长期维护的项目资料。不得把 Codex 自用任务计划、临时 spec、推理草稿或中间检查结果写入 `docs/`；用户明确要求的项目计划不受此限制。
 
 ## 性能测试纪律
 

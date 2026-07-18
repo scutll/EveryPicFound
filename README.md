@@ -1,177 +1,47 @@
-## 当前项目模块结构
-后续编码任务请按此结构进行包创建
-```bash
-E:.
-└───src.main.java.com
-            └───everypicfound
-                ├───common
-                │   ├───cache
-                │   ├───config
-                │   ├───constant
-                │   ├───context
-                │   ├───enums
-                │   ├───event
-                │   ├───exception
-                │   ├───executor
-                │   ├───filter
-                │   ├───log
-                │   ├───metric
-                │   ├───ratelimit
-                │   ├───response
-                │   └───util
-                ├───imageasset
-                │   ├───application
-                │   │   ├───command
-                │   │   ├───dto
-                │   │   ├───result
-                │   │   └───service
-                │   ├───domain
-                │   │   ├───checker
-                │   │   ├───duplicate
-                │   │   ├───enums
-                │   │   ├───extractor
-                │   │   ├───generator
-                │   │   ├───repository
-                │   │   ├───service
-                │   │   └───validator
-                │   ├───error
-                │   ├───infrastructure
-                │   │   ├───converter
-                │   │   ├───mapper
-                │   │   ├───po
-                │   │   └───repository
-                │   └───interfaces
-                │       ├───controller
-                │       ├───request
-                │       └───response
-                ├───modelclient
-                │   ├───api
-                │   ├───domain
-                │   │   ├───enums
-                │   │   └───validator
-                │   ├───error
-                │   └───infrastructure
-                │       ├───config
-                │       ├───health
-                │       └───http
-                ├───search
-                │   ├───application
-                │   │   ├───command
-                │   │   ├───context
-                │   │   ├───pipeline
-                │   │   └───service
-                │   ├───config
-                │   ├───domain
-                │   │   ├───assembler
-                │   │   ├───collection
-                │   │   ├───embedding
-                │   │   ├───filter
-                │   │   ├───overfetch
-                │   │   ├───rerank
-                │   │   └───validator
-                │   ├───error
-                │   └───interfaces
-                │       ├───controller
-                │       ├───request
-                │       └───response
-                ├───storage
-                │   ├───api
-                │   ├───core
-                │   ├───error
-                │   └───infrastructure
-                │       ├───config
-                │       ├───health
-                │       └───local
-                ├───vectorindex
-                │   ├───api
-                │   ├───collection
-                │   ├───domain
-                │   │   └───enums
-                │   ├───error
-                │   └───infrastructure
-                │       ├───client
-                │       ├───config
-                │       └───health
-                └───vectorization
-                    ├───api
-                    ├───application
-                    │   ├───processor
-                    │   ├───publisher
-                    │   ├───scanner
-                    │   └───vectorizer
-                    ├───config
-                    ├───domain
-                    │   ├───failure
-                    │   ├───fusion
-                    │   ├───model
-                    │   └───retry
-                    ├───error
-                    └───infrastructure
-                        └───publisher
+# EveryPicFound
+
+EveryPicFound 是一个多模态搜图项目，核心链路为：
+
+```text
+图片上传与管理 → 图片向量化 → 向量入库 → 图搜图 / 文搜图 / 图文混搜
 ```
 
-## 启动方式
+当前仓库正在从单体后端演进为微服务结构。用户与认证能力采用短期 JWT、持久化 Session、Refresh Token 轮换、MySQL 权威状态和 Redis 在线认证状态的设计。
 
-### 向量化模型端启动
+## 模块
 
-环境配置
-```bash
-cd modelservice
-# 安装依赖
-pip install -r requirements.txt
-# 安装pytorch
-conda install pytorch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 pytorch-cuda=12.1 -c pytorch -c nvidia
-```
+| 模块 | 职责 |
+| --- | --- |
+| `identity-service` | 用户账户、登录、Token、Session、认证状态与后续 Outbox 能力 |
+| `gateway-service` | 对外入口、路由、JWT 校验、动态认证状态检查与授权 |
+| `media-search-service` | 图片资产、向量化、搜索；作为 Resource Server 二次验签 |
+| `security-contract` | 跨服务共享的 JWT Claim、Scope 和必要内部契约 |
+| `modelservice` | Python/FastAPI 图片与文本向量化服务 |
+| `everypicfound-frontend` | 前端页面 |
+| `deploy` | 运行环境相关配置，例如 RocketMQ Broker 配置 |
 
-启动
-```bash
-uvicorn --app-dir modelservice main:app --host 0.0.0.0 --port 8001 --workers 1
-```
+## 当前阶段
 
-- 当前 `modelservice` 已接入动态批处理运行时，启动时会自动完成模型加载、批处理组件初始化以及 warmup。
-- 启动完成后可访问 `http://127.0.0.1:8001/health` 检查服务是否就绪。
+微服务工程、模块边界、最小配置和容器边界已经建立。用户与认证业务尚未开始编码，因此当前不创建用户认证表、Redis 业务 Key、Lua 脚本、RocketMQ Topic、Outbox 事件或 RSA 密钥。
 
+运行环境、Docker Compose、旧测试和构建基线会在对应功能首次实际使用时分别验证；不要把当前 Compose 中的 Debezium/CDC 配置视为已经选定的 Outbox 实现方案。
 
-### qdrant向量库/mysql启动
-- qdrant / mysql均运行在docker容器中，通过docker-compose.yml一起启动
-1. 确认 docker-compose.yml 存在
+## 开发入口
 
-2. 启docker
-```bash
-cd everypicfound-backend
-docker compose up -d
+优先阅读以下文档：
 
-# 此时使用 docker ps 能看到容器
-# 运行结束以后 docker compose down 关闭容器
-```
+1. [文档索引与维护规范](docs/README.md)
+2. [用户与认证模块设计](docs/modules/EveryPicFound_用户与认证模块设计.md)
+3. [JWT 登录认证与会话管理技术设计](docs/modules/基于JWT的登录认证与会话管理技术设计文档.md)
+4. [用户与认证模块编码计划](docs/modules/EveryPicFound%20用户与认证模块编码计划.md)
+5. [准备阶段收口记录](docs/modules/用户认证准备阶段收口清单.md)
+6. [模块设计文档](docs/project/模块设计文档.md)
 
-- 第一次启动创建数据库(docker里面未创建数据库时才用)
-```bash
-cmd /c "docker exec -i everypicfound-mysql mysql -uroot -proot everypicfound < src\main\resources\db\migration\init_imageasset.sql"
+当前用户与认证开发采用“学习核心、生成样板”的协作方式：核心配置、事务、SQL、Redis Lua、RocketMQ、测试和排障由开发者主导；DTO、PO、Converter、测试夹具等重复代码可由 Codex 批量生成并协助检查。
 
-#验证
-docker exec -it everypicfound-mysql mysql -uroot -proot everypicfound
-SHOW TABLES;
-DESC image_asset;
-```
+## 运行原则
 
-
-- 进入数据库
-```bash
-docker exec -it everypicfound-mysql mysql -uroot -proot everypicfound
-```
-
-### 后端服务启动
-```bash
-cd everypicfound-bcakend
-mvn clean compile
-mvn spring-boot:run
-```
-### 前端套件启动
-- 先确保已经下载node
-```bash
-cd everypicfound-frontend
-npm install
-npm run dev
-```
-
+- 只有 Gateway 对公网开放；内部服务使用容器网络服务名互通。
+- 消息队列固定使用 RocketMQ；Topic 在首次有真实生产者和消费者时创建。
+- 每个功能切片先确认数据变化和技术选择，再增加对应依赖、配置、迁移与测试。
+- 性能测试严格串行：单脚本、单场景、单时间窗、单批次。

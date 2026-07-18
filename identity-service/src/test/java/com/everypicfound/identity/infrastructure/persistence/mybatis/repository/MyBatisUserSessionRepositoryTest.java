@@ -57,4 +57,20 @@ class MyBatisUserSessionRepositoryTest {
         assertThat(po.getExpiresTime()).isEqualTo(LocalDateTime.parse(
                 "2026-07-18T10:00:00.123"));
     }
+
+    @Test
+    void revokesOnlyActiveSessionOwnedByUser() {
+        when(mapper.update(any(), any())).thenReturn(1, 0);
+
+        assertThat(repository.revokeActiveSession(
+                "session-123",
+                42L,
+                Instant.parse("2026-07-18T02:00:00.123Z")))
+                .isTrue();
+        assertThat(repository.revokeActiveSession(
+                "session-123",
+                42L,
+                Instant.parse("2026-07-18T02:00:00.123Z")))
+                .isFalse();
+    }
 }

@@ -27,7 +27,7 @@
 | 用户注册 | `POST /api/auth/register` | 否 | MySQL |
 | 用户登录 | `POST /api/auth/login` | 否 | MySQL |
 | Token 刷新 | `POST /api/auth/refresh` | 否，提交 JSON Refresh Token | MySQL |
-| 退出当前设备 | `POST /api/auth/logout` | 是 | MySQL、Redis、Outbox |
+| 退出当前设备 | `POST /api/auth/logout` | 是，提交 Bearer Access Token | MySQL |
 | 查询登录设备 | `GET /api/auth/sessions` | 是 | 只读 MySQL |
 | 指定设备下线 | `DELETE /api/auth/sessions/{sessionId}` | 是 | MySQL、Redis、Outbox |
 | 退出全部设备 | `POST /api/auth/logout-all` | 是 | MySQL、Redis、Outbox |
@@ -523,6 +523,8 @@ currentSession
 ### 1.8.1 用例目标
 
 撤销当前 `sessionId` 下的所有 Refresh Token 和尚未过期的 Access Token，同时保留其他设备的登录状态。
+
+当前代码阶段先实现 MySQL 权威状态撤销：Identity Service 从 Bearer Access Token 解码 `sub` 和 `sid`，将当前 `user_session` 标记为 `REVOKED`，并将该 Session 下仍为 `ACTIVE` 的 Refresh Token 标记为 `REVOKED`。Redis `sid deny`、Session barrier、Outbox 事件和 Cookie 清理属于后续即时撤销与一致性优化方案，不属于当前最小闭环。
 
 ### 1.8.2 完整流程
 

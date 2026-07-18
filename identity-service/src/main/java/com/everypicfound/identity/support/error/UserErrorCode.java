@@ -47,6 +47,10 @@ public enum UserErrorCode {
             "用户名已被使用",
             "username",
             HttpStatus.CONFLICT),
+    USER_PROFILE_NOT_FOUND(
+            "用户不存在或不可用",
+            null,
+            HttpStatus.NOT_FOUND),
     AUTH_INVALID_CREDENTIALS(
             "登录凭据无效",
             null,

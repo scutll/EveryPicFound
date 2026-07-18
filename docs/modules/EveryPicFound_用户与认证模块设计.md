@@ -684,21 +684,19 @@ Token.auth_time < user.auth_valid_after
 
 ### 1.11.1 查询当前用户
 
-`GET /api/users/me` 从 `SecurityContext` 获取 `userId`，再查询用户资料。
+`GET /api/users/me` 需要有效 Access Token。当前代码阶段由 Controller 解码 Bearer Token，并从 JWT `sub` 解析 `userId`，再直接查询 MySQL `user_account`。后续如果统一接入 Resource Server 上下文，可改为从 `SecurityContext` 读取当前用户。
 
-查询顺序：
+当前简单查询顺序：
 
 ```text
-读取 user:profile:{userId} 缓存
-  ↓ 未命中
 查询 MySQL user_account
   ↓
-回填短 TTL 缓存
+计算 displayName：nickname 为空则回退 username
   ↓
-返回资料
+返回 userId、username、nickname、displayName、avatarUrl
 ```
 
-用户资料缓存与认证状态缓存使用不同 Key，避免昵称或头像更新影响认证链路。
+当前阶段不建立用户资料缓存。后续如果资料查询成为热点，再使用独立的 `user:profile:{userId}` 缓存；用户资料缓存与认证状态缓存必须使用不同 Key，避免昵称或头像更新影响认证链路。
 
 ### 1.11.2 修改基础资料
 
@@ -707,16 +705,14 @@ Token.auth_time < user.auth_valid_after
 ```text
 校验请求字段
   ↓
-MySQL 事务更新资料
-  ↓
-事务提交成功
-  ↓
-删除 user:profile:{userId} 缓存
+MySQL 更新 user_account.nickname、avatar_url、updated_time
   ↓
 返回最新资料
 ```
 
-一致性采用 Cache Aside：先提交 MySQL，再删除缓存。原因是 MySQL 是权威数据源，先删缓存再更新数据库可能导致并发请求把旧数据库值重新写回缓存。
+当前阶段不建立缓存、不发布资料变更事件，也不推进 `auth_valid_after`。修改基础资料不会撤销 Session。
+
+当资料查询成为热点后，一致性可采用 Cache Aside：先提交 MySQL，再删除缓存。原因是 MySQL 是权威数据源，先删缓存再更新数据库可能导致并发请求把旧数据库值重新写回缓存。
 
 如果缓存删除失败：
 

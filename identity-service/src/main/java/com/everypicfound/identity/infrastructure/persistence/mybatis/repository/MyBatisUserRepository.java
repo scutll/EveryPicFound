@@ -1,8 +1,10 @@
 package com.everypicfound.identity.infrastructure.persistence.mybatis.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.everypicfound.identity.domain.enums.AccountStatus;
 import com.everypicfound.identity.domain.model.user.UserAccount;
 import com.everypicfound.identity.domain.model.user.UserAuthentication;
+import com.everypicfound.identity.domain.model.user.UserProfile;
 import com.everypicfound.identity.domain.model.user.Username;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
 import com.everypicfound.identity.domain.repository.UserRepository;
@@ -12,6 +14,10 @@ import com.everypicfound.identity.infrastructure.persistence.mybatis.po.UserAcco
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -52,6 +58,37 @@ public class MyBatisUserRepository implements UserRepository {
     }
 
     @Override
+    public Optional<UserProfile> findProfileById(long userId) {
+        UserAccountPo po = mapper.selectById(userId);
+        if (po == null || !AccountStatus.NORMAL.name().equals(po.getStatus())) {
+            return Optional.empty();
+        }
+        return Optional.of(new UserProfile(
+                po.getId(),
+                po.getUsername(),
+                po.getNickname(),
+                po.getAvatarUrl()));
+    }
+
+    @Override
+    public boolean updateProfile(
+            long userId,
+            String nickname,
+            String avatarUrl,
+            Instant updatedAt) {
+        Objects.requireNonNull(updatedAt, "updatedAt");
+        int affectedRows = mapper.update(
+                null,
+                Wrappers.<UserAccountPo>update()
+                        .set("nickname", nickname)
+                        .set("avatar_url", avatarUrl)
+                        .set("updated_time", toUtcDateTime(updatedAt))
+                        .eq("id", userId)
+                        .eq("status", AccountStatus.NORMAL.name()));
+        return affectedRows == 1;
+    }
+
+    @Override
     public long save(UserAccount account) {
         UserAccountPo po = converter.toPo(account);
         try {
@@ -69,5 +106,10 @@ public class MyBatisUserRepository implements UserRepository {
                     "generated user account id was not returned");
         }
         return po.getId();
+    }
+
+    private static LocalDateTime toUtcDateTime(Instant instant) {
+        Instant millisecondPrecision = instant.truncatedTo(ChronoUnit.MILLIS);
+        return LocalDateTime.ofInstant(millisecondPrecision, ZoneOffset.UTC);
     }
 }

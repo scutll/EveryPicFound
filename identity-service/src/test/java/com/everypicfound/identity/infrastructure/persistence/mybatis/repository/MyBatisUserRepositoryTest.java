@@ -4,6 +4,7 @@ import com.everypicfound.identity.domain.model.user.Nickname;
 import com.everypicfound.identity.domain.model.user.PasswordHash;
 import com.everypicfound.identity.domain.model.user.UserAccount;
 import com.everypicfound.identity.domain.model.user.UserAuthentication;
+import com.everypicfound.identity.domain.model.user.UserProfile;
 import com.everypicfound.identity.domain.model.user.Username;
 import com.everypicfound.identity.domain.model.user.UsernameAlreadyExistsException;
 import com.everypicfound.identity.infrastructure.persistence.mybatis.converter.UserAccountPersistenceConverter;
@@ -83,6 +84,44 @@ class MyBatisUserRepositoryTest {
 
         assertThat(repository.findAuthenticationByUsername(
                 Username.of("Missing01"))).isEmpty();
+    }
+
+    @Test
+    void findsUserProfileById() {
+        UserAccountPo po = new UserAccountPo();
+        po.setId(42L);
+        po.setUsername("User01");
+        po.setNickname("探索者");
+        po.setAvatarUrl("https://cdn.example.com/avatar.png");
+        po.setStatus("NORMAL");
+        when(mapper.selectById(42L)).thenReturn(po);
+
+        UserProfile profile = repository.findProfileById(42L).orElseThrow();
+
+        assertThat(profile.userId()).isEqualTo(42L);
+        assertThat(profile.username()).isEqualTo("User01");
+        assertThat(profile.nickname()).isEqualTo("探索者");
+        assertThat(profile.displayName()).isEqualTo("探索者");
+        assertThat(profile.avatarUrl())
+                .isEqualTo("https://cdn.example.com/avatar.png");
+    }
+
+    @Test
+    void updatesNicknameAndAvatarUrlByUserId() {
+        when(mapper.update(any(), any())).thenReturn(1, 0);
+
+        assertThat(repository.updateProfile(
+                42L,
+                "图友",
+                "https://cdn.example.com/new.png",
+                Instant.parse("2026-07-18T03:00:00.123Z")))
+                .isTrue();
+        assertThat(repository.updateProfile(
+                99L,
+                null,
+                null,
+                Instant.parse("2026-07-18T03:00:00.123Z")))
+                .isFalse();
     }
 
     @Test

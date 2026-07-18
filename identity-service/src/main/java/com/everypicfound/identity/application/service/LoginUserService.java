@@ -34,7 +34,7 @@ import java.util.Objects;
  * 用户名密码登录用例。
  */
 @Service
-public final class LoginUserService implements LoginUserUseCase {
+public class LoginUserService implements LoginUserUseCase {
 
     private static final Duration SESSION_TTL = Duration.ofDays(1);
     private static final Duration REFRESH_TOKEN_TTL = Duration.ofHours(1);

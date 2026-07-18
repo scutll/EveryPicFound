@@ -44,6 +44,8 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -68,6 +70,7 @@ class UserRegistrationMySqlIntegrationTest {
             "HttpUser01",
             "HttpDuplicate01",
             "LoginUser01",
+            "SecurityUser01",
             "BadStatus01",
             "BadVersion01");
 
@@ -117,13 +120,49 @@ class UserRegistrationMySqlIntegrationTest {
     @BeforeEach
     @AfterEach
     void removeTestAccounts() {
+        if (Boolean.parseBoolean(
+                System.getenv().getOrDefault(
+                        "EPF_TEST_MYSQL_KEEP_DATA", "false"))) {
+            return;
+        }
         String placeholders = String.join(
                 ", ",
                 TEST_USERNAMES.stream().map(ignored -> "?").toList());
         jdbcTemplate.update(
+                """
+                        DELETE FROM user_refresh_token
+                        WHERE session_id IN (
+                            SELECT session_id
+                            FROM user_session
+                            WHERE user_id IN (
+                                SELECT id
+                                FROM user_account
+                                WHERE username IN (%s)
+                            )
+                        )
+                        """.formatted(placeholders),
+                TEST_USERNAMES.toArray());
+        jdbcTemplate.update(
+                "DELETE FROM user_session WHERE user_id IN "
+                        + "(SELECT id FROM user_account WHERE username IN ("
+                        + placeholders + "))",
+                TEST_USERNAMES.toArray());
+        jdbcTemplate.update(
                 "DELETE FROM user_account WHERE username IN ("
                         + placeholders + ")",
                 TEST_USERNAMES.toArray());
+        jdbcTemplate.update(
+                "DELETE FROM user_refresh_token WHERE session_id IN "
+                        + "(SELECT session_id FROM user_session WHERE user_id IN "
+                        + "(SELECT id FROM user_account WHERE username "
+                        + "LIKE '#deleted#%#SecurityUser01'))");
+        jdbcTemplate.update(
+                "DELETE FROM user_session WHERE user_id IN "
+                        + "(SELECT id FROM user_account WHERE username "
+                        + "LIKE '#deleted#%#SecurityUser01')");
+        jdbcTemplate.update(
+                "DELETE FROM user_account WHERE username LIKE "
+                        + "'#deleted#%#SecurityUser01'");
     }
 
     @Test
@@ -369,6 +408,86 @@ class UserRegistrationMySqlIntegrationTest {
                 .isEqualTo("image:read image:search image:upload "
                         + "user:read user:write");
         assertThat(lastLoginTime).isNull();
+    }
+
+    @Test
+    void passwordChangeAndDeletionPersistAndRevokeCredentials()
+            throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"SecurityUser01","password":"secret123"}
+                                """))
+                .andExpect(status().isCreated());
+
+        String loginBody = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"SecurityUser01","password":"secret123"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var loginJson = objectMapper.readTree(loginBody);
+        String accessToken = loginJson.path("accessToken").asText();
+        String refreshToken = loginJson.path("refreshToken").asText();
+        long userId = jdbcTemplate.queryForObject(
+                "SELECT id FROM user_account WHERE username = ?",
+                Long.class,
+                "SecurityUser01");
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_session WHERE user_id = ?",
+                Integer.class, userId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_refresh_token WHERE token_hash = SHA2(?, 256)",
+                Integer.class, refreshToken)).isEqualTo(1);
+
+        mockMvc.perform(patch("/api/users/me/password")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword":"secret123","newPassword":"newsecret123"}
+                                """))
+                .andExpect(status().isNoContent());
+
+        String storedHash = jdbcTemplate.queryForObject(
+                "SELECT password_hash FROM user_account WHERE id = ?",
+                String.class, userId);
+        assertThat(passwordEncoder.matches("newsecret123", storedHash)).isTrue();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_session WHERE user_id = ? AND status = 'REVOKED'",
+                Integer.class, userId)).isEqualTo(1);
+
+        String newLoginBody = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"SecurityUser01","password":"newsecret123"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String newAccessToken = objectMapper.readTree(newLoginBody)
+                .path("accessToken").asText();
+
+        mockMvc.perform(delete("/api/users/me")
+                        .header("Authorization", "Bearer " + newAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"newsecret123\"}"))
+                .andExpect(status().isNoContent());
+
+        String deletedUsername = jdbcTemplate.queryForObject(
+                "SELECT username FROM user_account WHERE id = ?",
+                String.class, userId);
+        assertThat(deletedUsername).isEqualTo("#deleted#" + userId + "#SecurityUser01");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM user_account WHERE id = ?",
+                String.class, userId)).isEqualTo("DELETED");
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"SecurityUser01","password":"secret123"}
+                                """))
+                .andExpect(status().isCreated());
     }
 
     private UserAccount account(String username) {

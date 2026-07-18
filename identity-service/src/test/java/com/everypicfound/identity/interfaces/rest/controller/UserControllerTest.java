@@ -1,6 +1,8 @@
 package com.everypicfound.identity.interfaces.rest.controller;
 
 import com.everypicfound.identity.application.command.UpdateMyProfileCommand;
+import com.everypicfound.identity.application.port.in.ChangeMyPasswordUseCase;
+import com.everypicfound.identity.application.port.in.DeleteMyAccountUseCase;
 import com.everypicfound.identity.application.port.in.GetCurrentUserUseCase;
 import com.everypicfound.identity.application.port.in.UpdateMyProfileUseCase;
 import com.everypicfound.identity.application.result.UserProfileResult;
@@ -20,6 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -35,6 +38,12 @@ class UserControllerTest {
 
     @MockitoBean
     private UpdateMyProfileUseCase updateMyProfileUseCase;
+
+    @MockitoBean
+    private ChangeMyPasswordUseCase changeMyPasswordUseCase;
+
+    @MockitoBean
+    private DeleteMyAccountUseCase deleteMyAccountUseCase;
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
@@ -95,6 +104,50 @@ class UserControllerTest {
                                 && command.nickname().equals("  图友  ")
                                 && command.avatarUrl().equals(
                                 "https://cdn.example.com/new.png")));
+    }
+
+    @Test
+    void changesCurrentUserPassword() throws Exception {
+        when(jwtDecoder.decode("token-value"))
+                .thenReturn(jwt("token-value", "42"));
+
+        mockMvc.perform(patch("/api/users/me/password")
+                        .header("Authorization", "Bearer token-value")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "old123",
+                                  "newPassword": "new123"
+                                }
+                                """))
+                .andExpect(status().isNoContent());
+
+        verify(changeMyPasswordUseCase).changeMyPassword(
+                org.mockito.ArgumentMatchers.argThat(command ->
+                        command.userId() == 42L
+                                && command.currentPassword().equals("old123")
+                                && command.newPassword().equals("new123")));
+    }
+
+    @Test
+    void deletesCurrentUserAccount() throws Exception {
+        when(jwtDecoder.decode("token-value"))
+                .thenReturn(jwt("token-value", "42"));
+
+        mockMvc.perform(delete("/api/users/me")
+                        .header("Authorization", "Bearer token-value")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "password": "secret123"
+                                }
+                                """))
+                .andExpect(status().isNoContent());
+
+        verify(deleteMyAccountUseCase).deleteMyAccount(
+                org.mockito.ArgumentMatchers.argThat(command ->
+                        command.userId() == 42L
+                                && command.password().equals("secret123")));
     }
 
     private static Jwt jwt(String tokenValue, String subject) {

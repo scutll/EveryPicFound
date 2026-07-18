@@ -26,7 +26,7 @@ import java.util.Objects;
  * Refresh Token 换发与轮换用例。
  */
 @Service
-public final class RefreshTokenService implements RefreshTokenUseCase {
+public class RefreshTokenService implements RefreshTokenUseCase {
 
     private static final Duration REFRESH_TOKEN_TTL = Duration.ofHours(1);
 

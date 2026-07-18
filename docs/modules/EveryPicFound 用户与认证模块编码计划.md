@@ -101,8 +101,6 @@
 
 ### 3.2 尚未完成
 
-- 修改密码。
-- 账号注销。
 - 完整业务接口与真实 Media 用户数据的联动。
 - Redis 认证状态、Lua、Outbox 和 RocketMQ 认证消息。
 
@@ -393,7 +391,7 @@ POST /api/auth/login
 
 ## 阶段 5：用户信息与账户操作
 
-**状态：进行中，已完成当前用户资料查询与基础资料修改**
+**状态：已完成，待阶段 6 总验收**
 
 ### 用户结果
 
@@ -403,7 +401,7 @@ POST /api/auth/login
 
 1. `GET /api/users/me`：查询当前用户，计算昵称回退后的展示名。
 2. `PATCH /api/users/me/profile`：修改昵称等首版资料。
-3. `POST /api/users/me/password`：验证旧密码、保存新摘要、推进 `auth_valid_after` 并撤销已有 Session。
+3. `PATCH /api/users/me/password`：验证旧密码、保存新摘要、推进 `auth_valid_after` 并撤销已有 Session。
 4. `DELETE /api/users/me`：逻辑注销、释放原用户名并撤销已有 Session。
 
 ### 当前简单方案
@@ -429,7 +427,12 @@ POST /api/auth/login
 - [x] 新增 `PATCH /api/users/me/profile`，支持修改或清空昵称、头像 URL；空昵称展示名回退为用户名。
 - [x] 当前资料接口只对 `NORMAL` 用户返回资料；用户不存在或不可用返回 `404 USER_PROFILE_NOT_FOUND`。
 - [x] Repository 支持按用户 ID 读取资料，并使用 MyBatis-Plus 条件更新当前用户资料和 `updated_time`。
+- [x] `PATCH /api/users/me/password` 验证当前密码、保存 BCrypt 新摘要、推进 `auth_valid_after`，并在同一事务中撤销用户已有 Session/Refresh Token。
+- [x] `DELETE /api/users/me` 校验密码后将账户标记为 `DELETED`，把原用户名改为 `#deleted#<id>#<username>` 以释放原用户名，并撤销用户已有 Session/Refresh Token。
 - 验证证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" "-Dsurefire.failIfNoSpecifiedTests=false" -pl identity-service -am "-Dtest=UserProfileServiceTest,UserControllerTest,MyBatisUserRepositoryTest" test` 通过。
+- 账户安全单元/HTTP 回归：`AccountSecurityServiceTest`、`UserControllerTest` 通过；Identity 模块全量测试通过。
+- Docker MySQL 独立库集成：`UserRegistrationMySqlIntegrationTest` 10 项通过，真实执行 Flyway V1–V3，并验证注册、大小写、BCrypt、登录、修改密码、注销账户、用户名释放和 Session/Refresh 撤销。测试库为 `identity_test_codex`。
+- `identity_db` 的 V1 checksum 冲突已处理：确认表结构与当前 V1 语义一致后，使用条件更新将 `-1966889491` 修复为 `851280220`，随后 Flyway 在实际库成功执行 V2、V3。最终实际库三项迁移均为 `success=1`，集成测试 10 项通过，测试数据清理后用户、Session、Refresh Token 均为 0。
 - 回归证据：`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" -pl identity-service -am test` 通过；`mvn -q "-Dmaven.repo.local=C:\Users\mxl_scut\.m2\repository" "-DargLine=-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading" -pl gateway-service -am test` 通过。
 
 ---

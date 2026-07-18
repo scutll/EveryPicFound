@@ -12,4 +12,6 @@ public interface UserSessionRepository {
     void save(UserSession session);
 
     boolean revokeActiveSession(String sessionId, long userId, Instant revokedAt);
+
+    int revokeActiveSessionsByUserId(long userId, Instant revokedAt);
 }

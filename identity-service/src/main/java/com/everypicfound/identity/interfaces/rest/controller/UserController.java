@@ -1,11 +1,17 @@
 package com.everypicfound.identity.interfaces.rest.controller;
 
 import com.everypicfound.identity.application.exception.InvalidAccessTokenException;
+import com.everypicfound.identity.application.port.in.ChangeMyPasswordUseCase;
+import com.everypicfound.identity.application.port.in.DeleteMyAccountUseCase;
 import com.everypicfound.identity.application.port.in.GetCurrentUserUseCase;
 import com.everypicfound.identity.application.port.in.UpdateMyProfileUseCase;
 import com.everypicfound.identity.application.result.UserProfileResult;
+import com.everypicfound.identity.interfaces.rest.request.ChangeMyPasswordRequest;
+import com.everypicfound.identity.interfaces.rest.request.DeleteMyAccountRequest;
 import com.everypicfound.identity.interfaces.rest.request.UpdateMyProfileRequest;
 import com.everypicfound.identity.interfaces.rest.response.UserProfileResponse;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
@@ -27,11 +33,15 @@ public final class UserController {
 
     private final GetCurrentUserUseCase getCurrentUserUseCase;
     private final UpdateMyProfileUseCase updateMyProfileUseCase;
+    private final ChangeMyPasswordUseCase changeMyPasswordUseCase;
+    private final DeleteMyAccountUseCase deleteMyAccountUseCase;
     private final JwtDecoder jwtDecoder;
 
     public UserController(
             GetCurrentUserUseCase getCurrentUserUseCase,
             UpdateMyProfileUseCase updateMyProfileUseCase,
+            ChangeMyPasswordUseCase changeMyPasswordUseCase,
+            DeleteMyAccountUseCase deleteMyAccountUseCase,
             JwtDecoder jwtDecoder) {
         this.getCurrentUserUseCase = Objects.requireNonNull(
                 getCurrentUserUseCase,
@@ -39,6 +49,12 @@ public final class UserController {
         this.updateMyProfileUseCase = Objects.requireNonNull(
                 updateMyProfileUseCase,
                 "updateMyProfileUseCase");
+        this.changeMyPasswordUseCase = Objects.requireNonNull(
+                changeMyPasswordUseCase,
+                "changeMyPasswordUseCase");
+        this.deleteMyAccountUseCase = Objects.requireNonNull(
+                deleteMyAccountUseCase,
+                "deleteMyAccountUseCase");
         this.jwtDecoder = Objects.requireNonNull(jwtDecoder, "jwtDecoder");
     }
 
@@ -50,6 +66,26 @@ public final class UserController {
         UserProfileResult result = getCurrentUserUseCase.getCurrentUser(
                 userId);
         return UserProfileResponse.from(result);
+    }
+
+    @PatchMapping("/me/password")
+    public ResponseEntity<Void> changePassword(
+            @RequestHeader(name = "Authorization", required = false)
+            String authorizationHeader,
+            @RequestBody ChangeMyPasswordRequest request) {
+        long userId = currentUserId(authorizationHeader);
+        changeMyPasswordUseCase.changeMyPassword(request.toCommand(userId));
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteMe(
+            @RequestHeader(name = "Authorization", required = false)
+            String authorizationHeader,
+            @RequestBody DeleteMyAccountRequest request) {
+        long userId = currentUserId(authorizationHeader);
+        deleteMyAccountUseCase.deleteMyAccount(request.toCommand(userId));
+        return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/me/profile")

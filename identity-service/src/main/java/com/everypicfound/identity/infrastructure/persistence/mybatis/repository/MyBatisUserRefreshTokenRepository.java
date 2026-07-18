@@ -105,6 +105,20 @@ public class MyBatisUserRefreshTokenRepository
                         .eq("status", UserRefreshTokenStatus.ACTIVE.name()));
     }
 
+    @Override
+    public int revokeActiveTokensByUserId(long userId, Instant revokedAt) {
+        Objects.requireNonNull(revokedAt, "revokedAt");
+        return mapper.update(
+                null,
+                Wrappers.<UserRefreshTokenPo>update()
+                        .set("status", UserRefreshTokenStatus.REVOKED.name())
+                        .set("revoked_time", toUtcDateTime(revokedAt))
+                        .inSql("session_id",
+                                "SELECT session_id FROM user_session "
+                                        + "WHERE user_id = " + userId)
+                        .eq("status", UserRefreshTokenStatus.ACTIVE.name()));
+    }
+
     private static LocalDateTime toUtcDateTime(Instant instant) {
         Instant millisecondPrecision = instant.truncatedTo(ChronoUnit.MILLIS);
         return LocalDateTime.ofInstant(millisecondPrecision, ZoneOffset.UTC);

@@ -18,4 +18,6 @@ public interface UserRefreshTokenRepository {
     boolean markActiveTokenAsUsed(String tokenHash, Instant usedAt);
 
     int revokeActiveTokensBySessionId(String sessionId, Instant revokedAt);
+
+    int revokeActiveTokensByUserId(long userId, Instant revokedAt);
 }

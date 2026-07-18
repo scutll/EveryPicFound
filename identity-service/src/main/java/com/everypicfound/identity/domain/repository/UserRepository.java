@@ -18,6 +18,8 @@ public interface UserRepository {
     Optional<UserAuthentication> findAuthenticationByUsername(
             Username username);
 
+    Optional<UserAuthentication> findAuthenticationById(long userId);
+
     Optional<UserProfile> findProfileById(long userId);
 
     boolean updateProfile(
@@ -25,6 +27,15 @@ public interface UserRepository {
             String nickname,
             String avatarUrl,
             Instant updatedAt);
+
+    boolean changePassword(
+            long userId,
+            String passwordHash,
+            Instant changedAt);
+
+    boolean deleteAccount(
+            long userId,
+            Instant deletedAt);
 
     long save(UserAccount account);
 }

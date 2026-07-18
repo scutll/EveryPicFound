@@ -58,6 +58,13 @@ public class MyBatisUserRepository implements UserRepository {
     }
 
     @Override
+    public Optional<UserAuthentication> findAuthenticationById(long userId) {
+        UserAccountPo po = mapper.selectById(userId);
+        return Optional.ofNullable(po)
+                .map(converter::toAuthentication);
+    }
+
+    @Override
     public Optional<UserProfile> findProfileById(long userId) {
         UserAccountPo po = mapper.selectById(userId);
         if (po == null || !AccountStatus.NORMAL.name().equals(po.getStatus())) {
@@ -83,6 +90,45 @@ public class MyBatisUserRepository implements UserRepository {
                         .set("nickname", nickname)
                         .set("avatar_url", avatarUrl)
                         .set("updated_time", toUtcDateTime(updatedAt))
+                        .eq("id", userId)
+                        .eq("status", AccountStatus.NORMAL.name()));
+        return affectedRows == 1;
+    }
+
+    @Override
+    public boolean changePassword(
+            long userId,
+            String passwordHash,
+            Instant changedAt) {
+        Objects.requireNonNull(passwordHash, "passwordHash");
+        Objects.requireNonNull(changedAt, "changedAt");
+        LocalDateTime changedTime = toUtcDateTime(changedAt);
+        int affectedRows = mapper.update(
+                null,
+                Wrappers.<UserAccountPo>update()
+                        .set("password_hash", passwordHash)
+                        .set("auth_valid_after", changedTime)
+                        .set("updated_time", changedTime)
+                        .setSql("version = version + 1")
+                        .eq("id", userId)
+                        .eq("status", AccountStatus.NORMAL.name()));
+        return affectedRows == 1;
+    }
+
+    @Override
+    public boolean deleteAccount(
+            long userId,
+            Instant deletedAt) {
+        Objects.requireNonNull(deletedAt, "deletedAt");
+        LocalDateTime deletedTime = toUtcDateTime(deletedAt);
+        int affectedRows = mapper.update(
+                null,
+                Wrappers.<UserAccountPo>update()
+                        .set("status", AccountStatus.DELETED.name())
+                        .set("auth_valid_after", deletedTime)
+                        .set("updated_time", deletedTime)
+                        .setSql("username = CONCAT('#deleted#', id, '#', username)")
+                        .setSql("version = version + 1")
                         .eq("id", userId)
                         .eq("status", AccountStatus.NORMAL.name()));
         return affectedRows == 1;

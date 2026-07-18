@@ -59,6 +59,18 @@ public class MyBatisUserSessionRepository implements UserSessionRepository {
         return affectedRows == 1;
     }
 
+    @Override
+    public int revokeActiveSessionsByUserId(long userId, Instant revokedAt) {
+        Objects.requireNonNull(revokedAt, "revokedAt");
+        return mapper.update(
+                null,
+                Wrappers.<UserSessionPo>update()
+                        .set("status", UserSessionStatus.REVOKED.name())
+                        .set("revoked_time", toUtcDateTime(revokedAt))
+                        .eq("user_id", userId)
+                        .eq("status", UserSessionStatus.ACTIVE.name()));
+    }
+
     private static LocalDateTime toUtcDateTime(Instant instant) {
         Instant millisecondPrecision = instant.truncatedTo(ChronoUnit.MILLIS);
         return LocalDateTime.ofInstant(millisecondPrecision, ZoneOffset.UTC);

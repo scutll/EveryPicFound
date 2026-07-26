@@ -23,6 +23,7 @@
 
     <modules>
         <module>security-contract</module>
+        <module>interaction-service</module>
         <module>identity-service</module>
         <module>media-search-service</module>
         <module>gateway-service</module>

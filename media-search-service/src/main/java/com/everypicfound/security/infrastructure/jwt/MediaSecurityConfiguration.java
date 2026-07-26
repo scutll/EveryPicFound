@@ -39,6 +39,8 @@ public class MediaSecurityConfiguration {
                         .hasAuthority("SCOPE_" + SecurityScopes.IMAGE_SEARCH)
                         .requestMatchers("/api/images/**", "/images/**")
                         .hasAuthority("SCOPE_" + SecurityScopes.IMAGE_READ)
+                        .requestMatchers("/internal/images/**")
+                        .authenticated()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(resourceServer -> resourceServer.jwt(jwt -> {
                 }))

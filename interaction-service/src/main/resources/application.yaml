@@ -1,0 +1,47 @@
+server:
+  port: ${SERVER_PORT:8083}
+
+spring:
+  application:
+    name: interaction-service
+
+  datasource:
+    url: ${INTERACTION_DB_URL:jdbc:mysql://localhost:3307/interaction_db?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${INTERACTION_DB_USERNAME:root}
+    password: ${INTERACTION_DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+    validate-migration-naming: true
+    baseline-on-migrate: false
+    clean-disabled: true
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+everypicfound:
+  clients:
+    media:
+      base-url: ${MEDIA_SERVICE_URL:http://localhost:8080}
+      connect-timeout: ${MEDIA_SERVICE_CONNECT_TIMEOUT:2s}
+      read-timeout: ${MEDIA_SERVICE_READ_TIMEOUT:2s}
+
+  auth:
+    jwt:
+      issuer: ${EPF_JWT_ISSUER:everypicfound-identity}
+      audience: ${EPF_JWT_AUDIENCE:everypicfound-api}
+      clock-skew: ${EPF_JWT_CLOCK_SKEW:30s}
+      public-key-location: ${EPF_JWT_PUBLIC_KEY_LOCATION:file:./config/keys/identity-public.pem}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info

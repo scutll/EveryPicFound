@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.Base64;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -34,6 +35,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(classes = {
         MediaSecurityConfigurationTest.TestApplication.class,
         MediaSecurityConfigurationTest.TestController.class
+}, properties = {
+        "spring.autoconfigure.exclude="
+                + "org.springframework.boot.autoconfigure.jdbc."
+                + "DataSourceAutoConfiguration,"
+                + "org.springframework.boot.autoconfigure.flyway."
+                + "FlywayAutoConfiguration"
 })
 @AutoConfigureMockMvc
 @Import(com.everypicfound.security.infrastructure.jwt.MediaSecurityConfiguration.class)
@@ -100,6 +107,22 @@ class MediaSecurityConfigurationTest {
                 .andExpect(content().string("image"));
     }
 
+    @Test
+    void internalImageEndpointRequiresAuthentication()
+            throws Exception {
+        mockMvc.perform(get("/internal/images/42/exists"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void internalImageEndpointNeedsNoAdditionalScope()
+            throws Exception {
+        mockMvc.perform(get("/internal/images/42/exists")
+                        .with(jwt().authorities(List.of())))
+                .andExpect(status().isOk())
+                .andExpect(content().string("exists"));
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableAutoConfiguration
     static class TestApplication {
@@ -124,6 +147,12 @@ class MediaSecurityConfigurationTest {
         @ResponseBody
         String image() {
             return "image";
+        }
+
+        @GetMapping("/internal/images/{pictureId}/exists")
+        @ResponseBody
+        String exists() {
+            return "exists";
         }
     }
 

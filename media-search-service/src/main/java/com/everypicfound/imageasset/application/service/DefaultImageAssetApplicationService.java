@@ -151,6 +151,13 @@ public class DefaultImageAssetApplicationService implements ImageAssetApplicatio
     }
 
     @Override
+    public boolean exists(Long imageId) {
+        return imageId != null
+                && imageId > 0
+                && imageAssetRepository.existsById(imageId);
+    }
+
+    @Override
     public PageResult<ImageAssetDTO> pageQuery(ImageAssetQueryCriteria criteria) {
         throw new UnsupportedOperationException("TODO");
     }

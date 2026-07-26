@@ -14,6 +14,9 @@ public interface ImageAssetApplicationService {
     // 查询图片详情。
     ImageAssetDTO getDetail(Long imageId);
 
+    // 校验图片物理记录是否存在。
+    boolean exists(Long imageId);
+
     // 分页查询图片。
     PageResult<ImageAssetDTO> pageQuery(ImageAssetQueryCriteria criteria);
 

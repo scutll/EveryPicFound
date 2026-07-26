@@ -16,6 +16,9 @@ public interface ImageAssetRepository {
     // 单个查询。
     ImageAssetDTO findById(Long imageId);
 
+    // 按主键校验图片物理记录是否存在。
+    boolean existsById(Long imageId);
+
     // 批量查询。
     List<ImageAssetDTO> findByIds(List<Long> imageIds);
 

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.everypicfound.interaction.picturelike.infrastructure.persistence.mapper.PictureLikeMapper">
+
+    <insert id="insert">
+        INSERT INTO picture_like_user (
+            picture_id,
+            user_id
+        )
+        VALUES (
+            #{pictureId},
+            #{userId}
+        )
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM picture_like_user
+        WHERE picture_id = #{pictureId}
+          AND user_id = #{userId}
+    </delete>
+
+    <select id="countByPictureId" resultType="long">
+        SELECT COUNT(*)
+        FROM picture_like_user
+        WHERE picture_id = #{pictureId}
+    </select>
+
+    <select id="findRecentLikers"
+            resultType="com.everypicfound.interaction.picturelike.infrastructure.persistence.po.PictureLikeRow">
+        SELECT
+            picture_id,
+            user_id,
+            created_at
+        FROM picture_like_user
+        WHERE picture_id = #{pictureId}
+        ORDER BY created_at DESC, user_id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findRecentLikedPictures"
+            resultType="com.everypicfound.interaction.picturelike.infrastructure.persistence.po.LikedPictureRow">
+        SELECT
+            picture_id,
+            created_at AS liked_at
+        FROM picture_like_user
+        WHERE user_id = #{userId}
+        <if test="cursorTime != null and cursorPictureId != null">
+            AND (
+                created_at &lt; #{cursorTime}
+                OR (
+                    created_at = #{cursorTime}
+                    AND picture_id &lt; #{cursorPictureId}
+                )
+            )
+        </if>
+        ORDER BY created_at DESC, picture_id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

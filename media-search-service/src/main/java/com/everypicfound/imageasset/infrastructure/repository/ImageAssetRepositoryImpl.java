@@ -76,6 +76,27 @@ public class ImageAssetRepositoryImpl implements ImageAssetRepository {
     }
 
     @Override
+    public boolean existsById(Long imageId) {
+        if (imageId == null || imageId <= 0) {
+            recordSkippedRepositoryOperation("exists_by_id");
+            return false;
+        }
+
+        return observeRepositoryOperation(
+                "exists_by_id",
+                () -> {
+                    LambdaQueryWrapper<ImageAssetPO> wrapper =
+                            new LambdaQueryWrapper<>();
+                    wrapper.eq(ImageAssetPO::getId, imageId);
+                    Long count = imageAssetMapper.selectCount(wrapper);
+                    return count != null && count > 0L;
+                },
+                exists -> Boolean.TRUE.equals(exists)
+                        ? RESULT_FOUND
+                        : RESULT_NOT_FOUND);
+    }
+
+    @Override
     public List<ImageAssetDTO> findByIds(List<Long> imageIds) {
         if (imageIds == null || imageIds.isEmpty()) {
             recordSkippedRepositoryOperation("find_by_ids");

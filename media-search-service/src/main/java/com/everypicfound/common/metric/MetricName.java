@@ -535,7 +535,7 @@ public enum MetricName {
          * <p>
          * 固定标签：operation、result。
          * operation 可取 save、find_by_id、find_by_ids、
-         * exists_by_hash、update_status。
+         * exists_by_id、exists_by_hash、update_status。
          * </p>
          */
         IMAGE_ASSET_REPOSITORY_OPERATIONS(
